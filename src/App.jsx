@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard, Receipt, CalendarDays, ListChecks, Users,
   Plus, Bell, X, Check, AlertTriangle, Trash2, Car
 } from "lucide-react";
+import { supabase } from "./supabaseClient";
 
 const TEAL = "#1BAE95";
 const BLUE = "#1E88C7";
@@ -103,10 +104,53 @@ export default function LinetecApp() {
   const [toast, setToast] = useState(null);
   const [modal, setModal] = useState(null);
 
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadAll() {
+      try {
+        const [emp, cus, bra, inv, pay, app, tsk, veh, vex] = await Promise.all([
+          supabase.from("employees").select("*"),
+          supabase.from("customers").select("*"),
+          supabase.from("branches").select("*"),
+          supabase.from("invoices").select("*"),
+          supabase.from("payments").select("*"),
+          supabase.from("appointments").select("*"),
+          supabase.from("tasks").select("*"),
+          supabase.from("vehicles").select("*"),
+          supabase.from("vehicle_expenses").select("*"),
+        ]);
+        const branchesByCustomer = {};
+        (bra.data || []).forEach(b => {
+          if (!branchesByCustomer[b.customer_id]) branchesByCustomer[b.customer_id] = [];
+          branchesByCustomer[b.customer_id].push({ id: b.id, name: b.name, balance: Number(b.balance) });
+        });
+        const mappedCustomers = (cus.data || []).map(c => ({
+          id: c.id, name: c.name, phone: c.phone, email: c.email,
+          balance: Number(c.balance), branches: branchesByCustomer[c.id] || []
+        }));
+        setEmployees((emp.data || []).map(e => ({ id: e.id, name: e.name, role: e.role })));
+        setCustomers(mappedCustomers);
+        setInvoices((inv.data || []).map(i => ({ id: i.id, customerId: i.customer_id, branchId: i.branch_id, type: i.type, amount: Number(i.amount), date: i.date })));
+        setPayments((pay.data || []).map(p => ({ id: p.id, customerId: p.customer_id, branchId: p.branch_id, amount: Number(p.amount), date: p.date, full: p.is_full, remainingAfter: Number(p.remaining_after) })));
+        setAppointments((app.data || []).map(a => ({ id: a.id, title: a.title, customerId: a.customer_id, employeeId: a.employee_id, date: a.date, start: a.start_time?.slice(0,5), end: a.end_time?.slice(0,5) })));
+        setTasks((tsk.data || []).map(t => ({ id: t.id, title: t.title, assigneeId: t.assignee_id, priority: t.priority, deadline: t.deadline, status: t.status })));
+        setVehicles((veh.data || []).map(v => ({ id: v.id, plate: v.plate, model: v.model, assignedTo: v.assigned_to })));
+        setVehicleExpenses((vex.data || []).map(v => ({ id: v.id, vehicleId: v.vehicle_id, type: v.type, amount: Number(v.amount), date: v.date })));
+      } catch (e) {
+        showToast("Σφάλμα φόρτωσης δεδομένων.");
+      }
+      setLoading(false);
+    }
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
-  const deleteCustomer = (customer) => {
+  const deleteCustomer = async (customer) => {
     if (!window.confirm(`Διαγραφή του πελάτη "${customer.name}"; Θα αφαιρεθούν και τα σχετικά ραντεβού/παραστατικά.`)) return;
+    await supabase.from("customers").delete().eq("id", customer.id);
     setCustomers(cs => cs.filter(c => c.id !== customer.id));
     setInvoices(is => is.filter(i => i.customerId !== customer.id));
     setPayments(ps => ps.filter(p => p.customerId !== customer.id));
@@ -114,8 +158,11 @@ export default function LinetecApp() {
     showToast(`Ο πελάτης ${customer.name} διαγράφηκε.`);
   };
 
-  const deleteEmployee = (employee) => {
+  const deleteEmployee = async (employee) => {
     if (!window.confirm(`Διαγραφή του ${employee.name}; Θα αφαιρεθούν και τα ραντεβού/εργασίες που του έχουν ανατεθεί.`)) return;
+    await supabase.from("tasks").delete().eq("assignee_id", employee.id);
+    await supabase.from("appointments").delete().eq("employee_id", employee.id);
+    await supabase.from("employees").delete().eq("id", employee.id);
     setEmployees(es => es.filter(e => e.id !== employee.id));
     setAppointments(as => as.filter(a => a.employeeId !== employee.id));
     setTasks(ts => ts.filter(t => t.assigneeId !== employee.id));
@@ -123,8 +170,9 @@ export default function LinetecApp() {
     showToast(`Ο/Η ${employee.name} αφαιρέθηκε από το προσωπικό.`);
   };
 
-  const deleteVehicle = (vehicle) => {
+  const deleteVehicle = async (vehicle) => {
     if (!window.confirm(`Διαγραφή του οχήματος "${vehicle.plate}"; Θα αφαιρεθούν και τα έξοδά του.`)) return;
+    await supabase.from("vehicles").delete().eq("id", vehicle.id);
     setVehicles(vs => vs.filter(v => v.id !== vehicle.id));
     setVehicleExpenses(ves => ves.filter(ve => ve.vehicleId !== vehicle.id));
     showToast(`Το όχημα ${vehicle.plate} αφαιρέθηκε.`);
@@ -147,6 +195,14 @@ export default function LinetecApp() {
     const c = customers.find(c => c.id === customerId);
     return c?.branches?.find(b => b.id === branchId)?.name || null;
   };
+
+  if (loading) {
+    return (
+      <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: NAVY, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: DARK }}>
+        Φόρτωση δεδομένων...
+      </div>
+    );
+  }
 
   const nav = [
     { id: "dashboard", label: "Πίνακας", icon: LayoutDashboard },
@@ -370,7 +426,10 @@ export default function LinetecApp() {
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {["Εκκρεμεί", "Σε εξέλιξη", "Ολοκληρωμένη"].filter(s => s !== status).map(s => (
-                          <button key={s} onClick={() => setTasks(ts => ts.map(x => x.id === t.id ? { ...x, status: s } : x))}
+                          <button key={s} onClick={() => {
+                              supabase.from("tasks").update({ status: s }).eq("id", t.id);
+                              setTasks(ts => ts.map(x => x.id === t.id ? { ...x, status: s } : x));
+                            }}
                             style={{ fontSize: 11, border: `1px solid ${CARD_BORDER}`, background: NAVY_3, color: TEXT_MUTED, borderRadius: 6, padding: "3px 6px", cursor: "pointer" }}>
                             {s}
                           </button>
@@ -459,41 +518,46 @@ export default function LinetecApp() {
 
       {modal === "employee" && (
         <EmployeeModal onClose={() => setModal(null)}
-          onSave={(data) => {
-            setEmployees(es => [...es, { id: "e" + Date.now(), ...data }]);
+          onSave={async (data) => {
+            const { data: row } = await supabase.from("employees").insert({ name: data.name, role: data.role }).select().single();
+            if (row) setEmployees(es => [...es, { id: row.id, name: row.name, role: row.role }]);
             showToast(`Ο/Η ${data.name} προστέθηκε στο προσωπικό.`);
             setModal(null);
           }} />
       )}
       {modal === "vehicle" && (
         <VehicleModal employees={employees} onClose={() => setModal(null)}
-          onSave={(data) => {
-            setVehicles(vs => [...vs, { id: "v" + Date.now(), ...data }]);
+          onSave={async (data) => {
+            const { data: row } = await supabase.from("vehicles").insert({ plate: data.plate, model: data.model, assigned_to: data.assignedTo }).select().single();
+            if (row) setVehicles(vs => [...vs, { id: row.id, plate: row.plate, model: row.model, assignedTo: row.assigned_to }]);
             showToast(`Το όχημα ${data.plate} προστέθηκε.`);
             setModal(null);
           }} />
       )}
       {modal && modal.type === "vehicleExpense" && (
         <VehicleExpenseModal vehicles={vehicles} onClose={() => setModal(null)}
-          onSave={(data) => {
-            setVehicleExpenses(ves => [...ves, { id: "ve" + Date.now(), ...data }]);
+          onSave={async (data) => {
+            const { data: row } = await supabase.from("vehicle_expenses").insert({ vehicle_id: data.vehicleId, type: data.type, amount: data.amount, date: data.date }).select().single();
+            if (row) setVehicleExpenses(ves => [...ves, { id: row.id, vehicleId: row.vehicle_id, type: row.type, amount: Number(row.amount), date: row.date }]);
             showToast("Το έξοδο καταχωρήθηκε.");
             setModal(null);
           }} />
       )}
       {modal === "customer" && (
         <CustomerModal onClose={() => setModal(null)}
-          onSave={(data) => {
-            setCustomers(cs => [...cs, { id: "c" + Date.now(), balance: 0, branches: [], ...data }]);
+          onSave={async (data) => {
+            const { data: row } = await supabase.from("customers").insert({ name: data.name, phone: data.phone, email: data.email, balance: 0 }).select().single();
+            if (row) setCustomers(cs => [...cs, { id: row.id, name: row.name, phone: row.phone, email: row.email, balance: 0, branches: [] }]);
             showToast(`Ο πελάτης ${data.name} προστέθηκε.`);
             setModal(null);
           }} />
       )}
       {modal && modal.type === "branch" && (
         <BranchModal onClose={() => setModal(null)}
-          onSave={(name) => {
-            setCustomers(cs => cs.map(c => c.id === modal.customerId
-              ? { ...c, branches: [...(c.branches || []), { id: "b" + Date.now(), name, balance: 0 }] }
+          onSave={async (name) => {
+            const { data: row } = await supabase.from("branches").insert({ customer_id: modal.customerId, name, balance: 0 }).select().single();
+            if (row) setCustomers(cs => cs.map(c => c.id === modal.customerId
+              ? { ...c, branches: [...(c.branches || []), { id: row.id, name: row.name, balance: 0 }] }
               : c));
             showToast("Το παρακλάδι προστέθηκε.");
             setModal(null);
@@ -502,8 +566,20 @@ export default function LinetecApp() {
 
       {modal === "invoice" && (
         <InvoiceModal customers={sortedCustomers} onClose={() => setModal(null)}
-          onSave={(data) => {
-            setInvoices(is => [...is, { id: "i" + Date.now(), ...data }]);
+          onSave={async (data) => {
+            const { data: row } = await supabase.from("invoices").insert({
+              customer_id: data.customerId, branch_id: data.branchId, type: data.type, amount: data.amount, date: data.date
+            }).select().single();
+            if (!row) return;
+            setInvoices(is => [...is, { id: row.id, customerId: row.customer_id, branchId: row.branch_id, type: row.type, amount: Number(row.amount), date: row.date }]);
+            const cust = customers.find(c => c.id === data.customerId);
+            const newCustBalance = cust.balance + Number(data.amount);
+            await supabase.from("customers").update({ balance: newCustBalance }).eq("id", data.customerId);
+            if (data.branchId) {
+              const br = (cust.branches || []).find(b => b.id === data.branchId);
+              const newBrBalance = (br?.balance || 0) + Number(data.amount);
+              await supabase.from("branches").update({ balance: newBrBalance }).eq("id", data.branchId);
+            }
             setCustomers(cs => cs.map(c => {
               if (c.id !== data.customerId) return c;
               const branches = data.branchId
@@ -518,17 +594,24 @@ export default function LinetecApp() {
       {modal === "appointment" && (
         <AppointmentModal customers={sortedCustomers} employees={employees} appointments={appointments}
           onClose={() => setModal(null)}
-          onSave={(data, err) => {
+          onSave={async (data, err) => {
             if (err) { showToast(err); return; }
-            setAppointments(as => [...as, { id: "a" + Date.now(), ...data }]);
+            const { data: row } = await supabase.from("appointments").insert({
+              title: data.title, customer_id: data.customerId, employee_id: data.employeeId,
+              date: data.date, start_time: data.start, end_time: data.end
+            }).select().single();
+            if (row) setAppointments(as => [...as, { id: row.id, title: row.title, customerId: row.customer_id, employeeId: row.employee_id, date: row.date, start: row.start_time?.slice(0,5), end: row.end_time?.slice(0,5) }]);
             showToast("Το ραντεβού καταχωρήθηκε.");
             setModal(null);
           }} />
       )}
       {modal === "task" && (
         <TaskModal employees={employees} onClose={() => setModal(null)}
-          onSave={(data) => {
-            setTasks(ts => [...ts, { id: "t" + Date.now(), status: "Εκκρεμεί", ...data }]);
+          onSave={async (data) => {
+            const { data: row } = await supabase.from("tasks").insert({
+              title: data.title, assignee_id: data.assigneeId, priority: data.priority, deadline: data.deadline, status: "Εκκρεμεί"
+            }).select().single();
+            if (row) setTasks(ts => [...ts, { id: row.id, title: row.title, assigneeId: row.assignee_id, priority: row.priority, deadline: row.deadline, status: row.status }]);
             showToast("Η εργασία δημιουργήθηκε.");
             setModal(null);
           }} />
@@ -536,21 +619,28 @@ export default function LinetecApp() {
 
       {modal && modal.type === "payment" && (
         <PaymentModal customer={customers.find(c => c.id === modal.customerId)} onClose={() => setModal(null)}
-          onSave={(amount, full, branchId) => {
+          onSave={async (amount, full, branchId) => {
             const cust = customers.find(c => c.id === modal.customerId);
             const newBalance = Math.max(0, Math.round((cust.balance - amount) * 100) / 100);
+            const newBranchBalance = branchId
+              ? Math.max(0, Math.round((((cust.branches || []).find(b => b.id === branchId)?.balance || 0) - amount) * 100) / 100)
+              : null;
+            await supabase.from("customers").update({ balance: newBalance }).eq("id", modal.customerId);
+            if (branchId) await supabase.from("branches").update({ balance: newBranchBalance }).eq("id", branchId);
+            const { data: row } = await supabase.from("payments").insert({
+              customer_id: modal.customerId, branch_id: branchId || null, amount,
+              date: todayISO(), is_full: newBalance === 0, remaining_after: newBalance
+            }).select().single();
             setCustomers(cs => cs.map(c => {
               if (c.id !== modal.customerId) return c;
               const branches = branchId
-                ? (c.branches || []).map(b => b.id === branchId
-                    ? { ...b, balance: Math.max(0, Math.round(((b.balance || 0) - amount) * 100) / 100) }
-                    : b)
+                ? (c.branches || []).map(b => b.id === branchId ? { ...b, balance: newBranchBalance } : b)
                 : c.branches;
               return { ...c, balance: newBalance, branches };
             }));
-            setPayments(ps => [...ps, {
-              id: "p" + Date.now(), customerId: modal.customerId, branchId: branchId || null, amount,
-              date: todayISO(), full: newBalance === 0, remainingAfter: newBalance
+            if (row) setPayments(ps => [...ps, {
+              id: row.id, customerId: row.customer_id, branchId: row.branch_id, amount: Number(row.amount),
+              date: row.date, full: row.is_full, remainingAfter: Number(row.remaining_after)
             }]);
             const branchLabel = branchName(modal.customerId, branchId);
             showToast(full

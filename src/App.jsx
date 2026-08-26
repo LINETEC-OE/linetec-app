@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard, Receipt, CalendarDays, ListChecks, Users,
-  Plus, Bell, X, Check, AlertTriangle, Trash2, Car
+  Plus, Bell, X, Check, AlertTriangle, Trash2, Car, Pencil
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -290,6 +290,10 @@ export default function LinetecApp() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ fontWeight: 700, color: c.balance > 0 ? DARK : TEAL }}>{fmtEUR(c.balance)}</div>
+                    <button aria-label="Επεξεργασία πελάτη" onClick={() => setModal({ type: "editCustomer", customer: c })}
+                      style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: BLUE }}>
+                      <Pencil size={14} />
+                    </button>
                     <button aria-label="Διαγραφή πελάτη" onClick={() => deleteCustomer(c)}
                       style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: DANGER }}>
                       <Trash2 size={14} />
@@ -552,6 +556,17 @@ export default function LinetecApp() {
             setModal(null);
           }} />
       )}
+      {modal && modal.type === "editCustomer" && (
+        <CustomerModal
+          initial={modal.customer}
+          onClose={() => setModal(null)}
+          onSave={async (data) => {
+            await supabase.from("customers").update({ name: data.name, phone: data.phone, email: data.email }).eq("id", modal.customer.id);
+            setCustomers(cs => cs.map(c => c.id === modal.customer.id ? { ...c, name: data.name, phone: data.phone, email: data.email } : c));
+            showToast(`Τα στοιχεία του ${data.name} ενημερώθηκαν.`);
+            setModal(null);
+          }} />
+      )}
       {modal && modal.type === "branch" && (
         <BranchModal onClose={() => setModal(null)}
           onSave={async (name) => {
@@ -758,13 +773,13 @@ function VehicleExpenseModal({ vehicles, onClose, onSave }) {
   );
 }
 
-function CustomerModal({ onClose, onSave }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+function CustomerModal({ onClose, onSave, initial }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [phone, setPhone] = useState(initial?.phone || "");
+  const [email, setEmail] = useState(initial?.email || "");
   const [error, setError] = useState("");
   return (
-    <Modal title="Νέος πελάτης" onClose={onClose}>
+    <Modal title={initial ? "Επεξεργασία πελάτη" : "Νέος πελάτης"} onClose={onClose}>
       <label style={labelStyle}>Ονοματεπώνυμο / Επωνυμία</label>
       <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="π.χ. Γιάννης Παπαδόπουλος" />
       <label style={labelStyle}>Τηλέφωνο</label>
@@ -775,7 +790,7 @@ function CustomerModal({ onClose, onSave }) {
       <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!name) { setError("Συμπληρώστε όνομα πελάτη."); return; }
         onSave({ name, phone, email });
-      }}>Προσθήκη πελάτη</button>
+      }}>{initial ? "Αποθήκευση αλλαγών" : "Προσθήκη πελάτη"}</button>
     </Modal>
   );
 }

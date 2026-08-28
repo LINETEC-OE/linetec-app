@@ -216,6 +216,20 @@ export default function LinetecApp() {
 
   const round2 = (n) => Math.round(n * 100) / 100;
 
+  const deleteTask = async (task) => {
+    if (!window.confirm(`Διαγραφή της εργασίας "${task.title}";`)) return;
+    await supabase.from("tasks").delete().eq("id", task.id);
+    setTasks(ts => ts.filter(t => t.id !== task.id));
+    showToast("Η εργασία διαγράφηκε.");
+  };
+
+  const deleteAppointment = async (appt) => {
+    if (!window.confirm(`Διαγραφή του ραντεβού "${appt.title}";`)) return;
+    await supabase.from("appointments").delete().eq("id", appt.id);
+    setAppointments(as => as.filter(a => a.id !== appt.id));
+    showToast("Το ραντεβού διαγράφηκε.");
+  };
+
   const saveEditedInvoice = async (invoice, data) => {
     const custId = invoice.customerId;
     const cust = customers.find(c => c.id === custId);
@@ -608,8 +622,24 @@ export default function LinetecApp() {
             {myAppts.length === 0 && <Empty text="Δεν υπάρχουν προγραμματισμένα ραντεβού." />}
             {myAppts.slice().sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).map(a => (
               <RowCard key={a.id}>
-                <b>{fmtDate(a.date)}</b> · {a.start}–{a.end} · {a.title} · {customerName(a.customerId)}
-                {!isEmployeeView && <span style={{ color: TEXT_MUTED }}> ({employeeName(a.employeeId)})</span>}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <b>{fmtDate(a.date)}</b> · {a.start}–{a.end} · {a.title} · {customerName(a.customerId)}
+                    {!isEmployeeView && <span style={{ color: TEXT_MUTED }}> ({employeeName(a.employeeId)})</span>}
+                  </div>
+                  {!isEmployeeView && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button aria-label="Επεξεργασία ραντεβού" onClick={() => setModal({ type: "editAppointment", appointment: a })}
+                        style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: BLUE }}>
+                        <Pencil size={14} />
+                      </button>
+                      <button aria-label="Διαγραφή ραντεβού" onClick={() => deleteAppointment(a)}
+                        style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: DANGER }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </RowCard>
             ))}
           </div>
@@ -627,7 +657,21 @@ export default function LinetecApp() {
                   <div style={{ fontWeight: 700, fontSize: 13, color: LIGHTBLUE, marginBottom: 8 }}>{status} ({myTasks.filter(t => t.status === status).length})</div>
                   {myTasks.filter(t => t.status === status).map(t => (
                     <div key={t.id} style={{ background: NAVY_2, border: `1px solid ${CARD_BORDER}`, borderRadius: 10, padding: 10, marginBottom: 8 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t.title}</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{t.title}</div>
+                        {!isEmployeeView && (
+                          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                            <button aria-label="Επεξεργασία εργασίας" onClick={() => setModal({ type: "editTask", task: t })}
+                              style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 6, padding: "3px 5px", cursor: "pointer", color: BLUE }}>
+                              <Pencil size={12} />
+                            </button>
+                            <button aria-label="Διαγραφή εργασίας" onClick={() => deleteTask(t)}
+                              style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 6, padding: "3px 5px", cursor: "pointer", color: DANGER }}>
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <div style={{ fontSize: 11, color: TEXT_MUTED, marginBottom: 6 }}>
                         {t.priority} προτεραιότητα · Προθεσμία {fmtDate(t.deadline)}<br />
                         {!isEmployeeView && `Ανάθεση: ${employeeName(t.assigneeId)}`}
@@ -942,6 +986,41 @@ export default function LinetecApp() {
           customer={customers.find(c => c.id === modal.payment.customerId)}
           onClose={() => setModal(null)}
           onSave={async (data) => { await saveEditedPayment(modal.payment, data); setModal(null); }}
+        />
+      )}
+      {modal && modal.type === "editTask" && (
+        <TaskModal
+          employees={employees}
+          initial={modal.task}
+          onClose={() => setModal(null)}
+          onSave={async (data) => {
+            await supabase.from("tasks").update({
+              title: data.title, assignee_id: data.assigneeId, priority: data.priority, deadline: data.deadline
+            }).eq("id", modal.task.id);
+            setTasks(ts => ts.map(t => t.id === modal.task.id ? { ...t, title: data.title, assigneeId: data.assigneeId, priority: data.priority, deadline: data.deadline } : t));
+            showToast("Η εργασία ενημερώθηκε.");
+            setModal(null);
+          }}
+        />
+      )}
+      {modal && modal.type === "editAppointment" && (
+        <AppointmentModal
+          customers={sortedCustomers} employees={employees}
+          appointments={appointments.filter(a => a.id !== modal.appointment.id)}
+          initial={modal.appointment}
+          onClose={() => setModal(null)}
+          onSave={async (data, err) => {
+            if (err) { showToast(err); return; }
+            await supabase.from("appointments").update({
+              title: data.title, customer_id: data.customerId, employee_id: data.employeeId,
+              date: data.date, start_time: data.start, end_time: data.end
+            }).eq("id", modal.appointment.id);
+            setAppointments(as => as.map(a => a.id === modal.appointment.id
+              ? { ...a, title: data.title, customerId: data.customerId, employeeId: data.employeeId, date: data.date, start: data.start, end: data.end }
+              : a));
+            showToast("Το ραντεβού ενημερώθηκε.");
+            setModal(null);
+          }}
         />
       )}
 
@@ -1337,16 +1416,16 @@ function InvoiceModal({ customers, onClose, onSave }) {
   );
 }
 
-function AppointmentModal({ customers, employees, appointments, onClose, onSave }) {
-  const [title, setTitle] = useState("");
-  const [customerId, setCustomerId] = useState(customers[0]?.id || "");
-  const [employeeId, setEmployeeId] = useState(employees[0]?.id || "");
-  const [date, setDate] = useState(todayISO());
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("10:00");
+function AppointmentModal({ customers, employees, appointments, onClose, onSave, initial }) {
+  const [title, setTitle] = useState(initial?.title || "");
+  const [customerId, setCustomerId] = useState(initial?.customerId || customers[0]?.id || "");
+  const [employeeId, setEmployeeId] = useState(initial?.employeeId || employees[0]?.id || "");
+  const [date, setDate] = useState(initial?.date || todayISO());
+  const [start, setStart] = useState(initial?.start || "09:00");
+  const [end, setEnd] = useState(initial?.end || "10:00");
   const [error, setError] = useState("");
   return (
-    <Modal title="Νέο ραντεβού" onClose={onClose}>
+    <Modal title={initial ? "Επεξεργασία ραντεβού" : "Νέο ραντεβού"} onClose={onClose}>
       <label style={labelStyle}>Τίτλος</label>
       <input style={inputStyle} value={title} onChange={e => setTitle(e.target.value)} placeholder="π.χ. Επισκευή γραμμής" />
       <label style={labelStyle}>Πελάτης</label>
@@ -1376,7 +1455,7 @@ function AppointmentModal({ customers, employees, appointments, onClose, onSave 
         const conflict = appointments.some(a => a.employeeId === employeeId && a.date === date && start < a.end && end > a.start);
         if (conflict) { setError("Ο υπάλληλος έχει ήδη ραντεβού αυτή την ώρα."); return; }
         onSave({ title, customerId, employeeId, date, start, end });
-      }}>Καταχώρηση</button>
+      }}>{initial ? "Αποθήκευση αλλαγών" : "Καταχώρηση"}</button>
     </Modal>
   );
 }
@@ -1443,14 +1522,14 @@ function PaymentModal({ customer, onClose, onSave }) {
   );
 }
 
-function TaskModal({ employees, onClose, onSave }) {
-  const [title, setTitle] = useState("");
-  const [assigneeId, setAssigneeId] = useState(employees[0]?.id || "");
-  const [priority, setPriority] = useState("Μεσαία");
-  const [deadline, setDeadline] = useState(todayISO());
+function TaskModal({ employees, onClose, onSave, initial }) {
+  const [title, setTitle] = useState(initial?.title || "");
+  const [assigneeId, setAssigneeId] = useState(initial?.assigneeId || employees[0]?.id || "");
+  const [priority, setPriority] = useState(initial?.priority || "Μεσαία");
+  const [deadline, setDeadline] = useState(initial?.deadline || todayISO());
   const [error, setError] = useState("");
   return (
-    <Modal title="Νέα εργασία" onClose={onClose}>
+    <Modal title={initial ? "Επεξεργασία εργασίας" : "Νέα εργασία"} onClose={onClose}>
       <label style={labelStyle}>Τίτλος εργασίας</label>
       <input style={inputStyle} value={title} onChange={e => setTitle(e.target.value)} placeholder="π.χ. Παραγγελία υλικών" />
       <label style={labelStyle}>Ανάθεση σε</label>
@@ -1467,7 +1546,9 @@ function TaskModal({ employees, onClose, onSave }) {
       <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!title) { setError("Συμπληρώστε τίτλο εργασίας."); return; }
         onSave({ title, assigneeId, priority, deadline });
-      }}>Δημιουργία</button>
+      }}>{initial ? "Αποθήκευση αλλαγών" : "Δημιουργία"}</button>
     </Modal>
   );
 }
+
+    

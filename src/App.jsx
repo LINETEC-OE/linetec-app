@@ -9,15 +9,22 @@ const TEAL = "#1BAE95";
 const BLUE = "#1E88C7";
 const DEEPBLUE = "#1565A8";
 const LIGHTBLUE = "#3FB6E8";
-const NAVY = "#C4D8E2";
-const NAVY_2 = "#FFFFFF";
-const NAVY_3 = "#DCE9F0";
-const CARD_BORDER = "#A9C3D1";
-const DARK = "#1C3A4B";
+const NAVY = "#0D0D0D";
+const NAVY_2 = "#1A1A1A";
+const NAVY_3 = "#242424";
+const CARD_BORDER = "#333333";
+const DARK = "#EDEDED";
 const DANGER = "#FF6B6B";
-const TEXT_MUTED = "#5A7788";
+const TEXT_MUTED = "#9A9A9A";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const initialsOf = (name) => (name || "").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+const AVATAR_COLORS = ["#1BAE95", "#1E88C7", "#3FB6E8", "#1565A8", "#2E7D6B", "#6C63FF"];
+const avatarColor = (name) => {
+  let hash = 0;
+  for (let i = 0; i < (name || "").length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+};
 const fmtEUR = (n) => n.toLocaleString("el-GR", { style: "currency", currency: "EUR" });
 const fmtDate = (iso) => new Date(iso).toLocaleDateString("el-GR");
 
@@ -30,9 +37,10 @@ function LogoMark({ size = 96 }) {
 }
 
 const initialEmployees = [
-  { id: "e1", name: "Γιώργος Παπαδόπουλος", role: "Τεχνικός" },
-  { id: "e2", name: "Ελένη Νικολάου", role: "Τεχνικός" },
-  { id: "e3", name: "Δημήτρης Ιωάννου", role: "Διαχειριστής" },
+  { id: "e1", name: "Γιώργος Παπαδόπουλος", role: "Τεχνικός", phone: "", email: "", afm: "", address: "", notes: "", photoUrl: "" },
+  { id: "e2", name: "Ελένη Νικολάου", role: "Τεχνικός", phone: "", email: "", afm: "", address: "", notes: "", photoUrl: "" },
+  { id: "e3", name: "Δημήτρης Ιωάννου", role: "Διαχειριστής", phone: "", email: "", afm: "", address: "", notes: "", photoUrl: "" },
+  { id: "e4", name: "Φώτης", role: "Διαχειριστής", phone: "", email: "", afm: "", address: "", notes: "", photoUrl: "" },
 ];
 
 const initialCustomers = [
@@ -102,6 +110,7 @@ export default function LinetecApp() {
   const [vehicles, setVehicles] = useState(initialVehicles);
   const [vehicleExpenses, setVehicleExpenses] = useState(initialVehicleExpenses);
   const [toast, setToast] = useState(null);
+  const [customerSearch, setCustomerSearch] = useState("");
   const [modal, setModal] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -129,7 +138,11 @@ export default function LinetecApp() {
           id: c.id, name: c.name, phone: c.phone, email: c.email,
           balance: Number(c.balance), branches: branchesByCustomer[c.id] || []
         }));
-        setEmployees((emp.data || []).map(e => ({ id: e.id, name: e.name, role: e.role })));
+        setEmployees((emp.data || []).map(e => ({
+          id: e.id, name: e.name, role: e.role,
+          phone: e.phone || "", email: e.email || "", afm: e.afm || "", address: e.address || "", notes: e.notes || "",
+          photoUrl: e.photo_url || ""
+        })));
         setCustomers(mappedCustomers);
         setInvoices((inv.data || []).map(i => ({ id: i.id, customerId: i.customer_id, branchId: i.branch_id, type: i.type, amount: Number(i.amount), date: i.date })));
         setPayments((pay.data || []).map(p => ({ id: p.id, customerId: p.customer_id, branchId: p.branch_id, amount: Number(p.amount), date: p.date, full: p.is_full, remainingAfter: Number(p.remaining_after) })));
@@ -183,6 +196,19 @@ export default function LinetecApp() {
   const myAppts = isEmployeeView ? appointments.filter(a => a.employeeId === role) : appointments;
 
   const totalOwed = customers.reduce((s, c) => s + c.balance, 0);
+  const balanceTrend = (() => {
+    const events = [
+      ...invoices.map(i => ({ date: i.date, delta: i.amount })),
+      ...payments.map(p => ({ date: p.date, delta: -p.amount })),
+    ].sort((a, b) => a.date.localeCompare(b.date));
+    let running = 0;
+    return events.map(e => (running += e.delta)).slice(-8);
+  })();
+  const monthPrefix = todayISO().slice(0, 7);
+  const monthLabel = new Date(todayISO()).toLocaleDateString("el-GR", { month: "long", year: "numeric" });
+  const monthlyIncome = payments.filter(p => p.date.startsWith(monthPrefix)).reduce((s, p) => s + p.amount, 0);
+  const monthlyCharges = invoices.filter(i => i.date.startsWith(monthPrefix)).reduce((s, i) => s + i.amount, 0);
+  const monthlyVehicleCost = vehicleExpenses.filter(ve => ve.date.startsWith(monthPrefix)).reduce((s, ve) => s + ve.amount, 0);
   const customersWithBalance = customers.filter(c => c.balance > 0);
   const todayAppts = myAppts.filter(a => a.date === todayISO());
   const pendingTasks = myTasks.filter(t => t.status !== "Ολοκληρωμένη");
@@ -190,6 +216,13 @@ export default function LinetecApp() {
   const employeeName = (id) => employees.find(e => e.id === id)?.name || "—";
   const customerName = (id) => customers.find(c => c.id === id)?.name || "—";
   const sortedCustomers = [...customers].sort((a, b) => a.name.localeCompare(b.name, "el"));
+  const filteredCustomers = sortedCustomers.filter(c => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (c.name || "").toLowerCase().includes(q)
+      || (c.phone || "").toLowerCase().includes(q)
+      || (c.email || "").toLowerCase().includes(q);
+  });
   const branchName = (customerId, branchId) => {
     if (!branchId) return null;
     const c = customers.find(c => c.id === customerId);
@@ -198,7 +231,7 @@ export default function LinetecApp() {
 
   if (loading) {
     return (
-      <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: NAVY, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: DARK }}>
+      <div style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif", background: NAVY, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: DARK }}>
         Φόρτωση δεδομένων...
       </div>
     );
@@ -215,8 +248,38 @@ export default function LinetecApp() {
   ];
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", maxWidth: 960, margin: "0 auto", background: NAVY, minHeight: "100vh", color: DARK }}>
-      <div style={{ background: NAVY_2, borderBottom: `1px solid ${CARD_BORDER}`, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+    <>
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+      .ltc-card { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
+      .ltc-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.35); border-color: ${LIGHTBLUE}; }
+      .ltc-kpi { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+      .ltc-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.4); }
+      .ltc-btn { transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease; }
+      .ltc-btn:hover { filter: brightness(1.1); box-shadow: 0 4px 14px rgba(30,136,199,0.35); }
+      .ltc-btn:active { transform: scale(0.97); }
+      .ltc-avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    `}</style>
+    <div style={{
+        fontFamily: "'Inter', system-ui, -apple-system, sans-serif", maxWidth: 960, margin: "0 auto",
+        minHeight: "100vh", color: DARK, position: "relative", isolation: "isolate",
+        background: `
+          radial-gradient(ellipse 900px 500px at 10% -5%, rgba(27,174,149,0.16), transparent 60%),
+          radial-gradient(ellipse 800px 600px at 100% 10%, rgba(30,136,199,0.14), transparent 60%),
+          radial-gradient(ellipse 700px 500px at 20% 100%, rgba(63,182,232,0.10), transparent 60%),
+          ${NAVY}
+        `
+      }}>
+      <svg width="0" height="0" style={{ position: "absolute" }}>
+        <defs></defs>
+      </svg>
+      <div style={{
+          position: "fixed", inset: 0, zIndex: -1, opacity: 0.35, pointerEvents: "none",
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'%3E%3Cpath d='M0 100 C 60 60, 100 140, 160 100 S 260 60, 320 100 S 400 140, 400 100' fill='none' stroke='%231BAE95' stroke-opacity='0.18' stroke-width='2'/%3E%3Cpath d='M0 140 C 60 100, 100 180, 160 140 S 260 100, 320 140 S 400 180, 400 140' fill='none' stroke='%233FB6E8' stroke-opacity='0.14' stroke-width='2'/%3E%3C/svg%3E")`,
+          backgroundSize: "400px 200px", backgroundRepeat: "repeat"
+        }} />
+
+      <div style={{ background: "rgba(26,26,26,0.35)", backdropFilter: "blur(6px)", borderBottom: `1px solid ${CARD_BORDER}`, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <LogoMark size={90} />
         </div>
@@ -227,7 +290,7 @@ export default function LinetecApp() {
         </select>
       </div>
 
-      <div style={{ display: "flex", gap: 4, padding: "10px 20px", overflowX: "auto", background: NAVY_2, borderBottom: `1px solid ${CARD_BORDER}` }}>
+      <div style={{ display: "flex", gap: 4, padding: "10px 20px", overflowX: "auto", background: "rgba(26,26,26,0.35)", backdropFilter: "blur(6px)", borderBottom: `1px solid ${CARD_BORDER}` }}>
         {nav.filter(n => !n.adminOnly || !isEmployeeView).map(n => {
           const Icon = n.icon;
           const active = view === n.id;
@@ -248,11 +311,22 @@ export default function LinetecApp() {
         {view === "dashboard" && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 20 }}>
-              {!isEmployeeView && <Card label="Συνολικές οφειλές" value={fmtEUR(totalOwed)} color={TEAL} />}
+              {!isEmployeeView && <Card label="Συνολικές οφειλές" value={fmtEUR(totalOwed)} color={TEAL} trend={balanceTrend} />}
               {!isEmployeeView && <Card label="Πελάτες με οφειλή" value={customersWithBalance.length} color={DANGER} />}
               <Card label="Σημερινά ραντεβού" value={todayAppts.length} color={LIGHTBLUE} />
               <Card label="Εκκρεμείς εργασίες" value={pendingTasks.length} color={BLUE} />
             </div>
+
+            {!isEmployeeView && (
+              <>
+                <SectionTitle>Μηνιαία σύνοψη — {monthLabel}</SectionTitle>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 20 }}>
+                  <Card label="Έσοδα (εισπράξεις)" value={fmtEUR(monthlyIncome)} color={TEAL} />
+                  <Card label="Χρεώσεις (τιμολόγια)" value={fmtEUR(monthlyCharges)} color={BLUE} />
+                  <Card label="Έξοδα οχημάτων" value={fmtEUR(monthlyVehicleCost)} color={DANGER} />
+                </div>
+              </>
+            )}
 
             <SectionTitle>Σημερινά ραντεβού</SectionTitle>
             {todayAppts.length === 0 && <Empty text="Δεν υπάρχουν ραντεβού σήμερα." />}
@@ -278,14 +352,24 @@ export default function LinetecApp() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <SectionTitle>Λίστα πελατών</SectionTitle>
-              <button style={btnPrimary} onClick={() => setModal("customer")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέος πελάτης</button>
+              <button className="ltc-btn" style={btnPrimary} onClick={() => setModal("customer")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέος πελάτης</button>
             </div>
+            <input
+              value={customerSearch}
+              onChange={e => setCustomerSearch(e.target.value)}
+              placeholder="Αναζήτηση πελάτη (όνομα, τηλέφωνο, email)..."
+              style={{ ...inputStyle, marginBottom: 14 }}
+            />
             {customers.length === 0 && <Empty text="Δεν υπάρχουν καταχωρημένοι πελάτες." />}
-            {sortedCustomers.map(c => (
+            {filteredCustomers.length === 0 && customers.length > 0 && <Empty text="Δεν βρέθηκε πελάτης που να ταιριάζει." />}
+            {filteredCustomers.map(c => (
               <RowCard key={c.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                   <div>
-                    <b>{c.name}</b><br />
+                    <button onClick={() => setModal({ type: "customerHistory", customerId: c.id, tab: "invoices" })}
+                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: LIGHTBLUE, fontWeight: 700, fontSize: 14, textAlign: "left" }}>
+                      {c.name}
+                    </button><br />
                     <span style={{ fontSize: 12, color: TEXT_MUTED }}>{c.phone}{c.email ? ` · ${c.email}` : ""}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -313,7 +397,7 @@ export default function LinetecApp() {
                   ))}
                   <button style={{ ...btnGhost, padding: "5px 10px", fontSize: 12, marginTop: 4 }}
                     onClick={() => setModal({ type: "branch", customerId: c.id })}>
-                    <Plus size={12} style={{ verticalAlign: -1 }} /> Προσθήκη παρακλαδιού
+                    <Plus size={12} style={{ verticalAlign: -1 }} /> Προσθήκη έργου
                   </button>
                 </div>
               </RowCard>
@@ -325,7 +409,7 @@ export default function LinetecApp() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <SectionTitle>Πελάτες & Οφειλές</SectionTitle>
-              <button style={btnPrimary} onClick={() => setModal("invoice")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο τιμολόγιο/απόδειξη</button>
+              <button className="ltc-btn" style={btnPrimary} onClick={() => setModal("invoice")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέα χρέωση</button>
             </div>
             {sortedCustomers.map(c => {
               return (
@@ -365,7 +449,7 @@ export default function LinetecApp() {
               );
             })}
 
-            <SectionTitle>Ιστορικό τιμολογίων</SectionTitle>
+            <SectionTitle>Ιστορικό χρεώσεων</SectionTitle>
             {invoices.length === 0 && <Empty text="Δεν υπάρχουν καταχωρημένα παραστατικά." />}
             {invoices.slice().reverse().map(i => (
               <RowCard key={i.id}>
@@ -399,7 +483,7 @@ export default function LinetecApp() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <SectionTitle>Ραντεβού</SectionTitle>
-              <button style={btnPrimary} onClick={() => setModal("appointment")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο ραντεβού</button>
+              <button className="ltc-btn" style={btnPrimary} onClick={() => setModal("appointment")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο ραντεβού</button>
             </div>
             {myAppts.length === 0 && <Empty text="Δεν υπάρχουν προγραμματισμένα ραντεβού." />}
             {myAppts.slice().sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).map(a => (
@@ -415,7 +499,7 @@ export default function LinetecApp() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <SectionTitle>Εργασίες</SectionTitle>
-              {!isEmployeeView && <button style={btnPrimary} onClick={() => setModal("task")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέα εργασία</button>}
+              {!isEmployeeView && <button className="ltc-btn" style={btnPrimary} onClick={() => setModal("task")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέα εργασία</button>}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
               {["Εκκρεμεί", "Σε εξέλιξη", "Ολοκληρωμένη"].map(status => (
@@ -451,13 +535,26 @@ export default function LinetecApp() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <SectionTitle>Προσωπικό</SectionTitle>
-              <button style={btnPrimary} onClick={() => setModal("employee")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο μέλος προσωπικού</button>
+              <button className="ltc-btn" style={btnPrimary} onClick={() => setModal("employee")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο μέλος προσωπικού</button>
             </div>
             {employees.length === 0 && <Empty text="Δεν υπάρχει καταχωρημένο προσωπικό." />}
             {employees.map(e => (
               <RowCard key={e.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                  <div><b>{e.name}</b><br /><span style={{ fontSize: 12, color: TEXT_MUTED }}>{e.role}</span></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div className="ltc-avatar" style={{ width: 36, height: 36, background: e.photoUrl ? "transparent" : avatarColor(e.name), color: "white", overflow: "hidden" }}>
+                      {e.photoUrl
+                        ? <img src={e.photoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : initialsOf(e.name)}
+                    </div>
+                    <div>
+                      <button onClick={() => setModal({ type: "employeeDetail", employeeId: e.id })}
+                        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: LIGHTBLUE, fontWeight: 700, fontSize: 14, textAlign: "left" }}>
+                        {e.name}
+                      </button><br />
+                      <span style={{ fontSize: 12, color: TEXT_MUTED }}>{e.role}</span>
+                    </div>
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ textAlign: "right", fontSize: 12, color: TEXT_MUTED }}>
                       {appointments.filter(a => a.employeeId === e.id).length} ραντεβού · {tasks.filter(t => t.assigneeId === e.id && t.status !== "Ολοκληρωμένη").length} εκκρεμείς εργασίες
@@ -478,8 +575,8 @@ export default function LinetecApp() {
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <SectionTitle>Οχήματα εταιρείας</SectionTitle>
               <div style={{ display: "flex", gap: 8 }}>
-                <button style={btnGhost} onClick={() => setModal("vehicle")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο όχημα</button>
-                <button style={btnPrimary} onClick={() => setModal({ type: "vehicleExpense" })}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο έξοδο</button>
+                <button className="ltc-btn" style={btnGhost} onClick={() => setModal("vehicle")}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο όχημα</button>
+                <button className="ltc-btn" style={btnPrimary} onClick={() => setModal({ type: "vehicleExpense" })}><Plus size={14} style={{ verticalAlign: -2 }} /> Νέο έξοδο</button>
               </div>
             </div>
             {vehicles.length === 0 && <Empty text="Δεν υπάρχουν καταχωρημένα οχήματα." />}
@@ -489,7 +586,10 @@ export default function LinetecApp() {
                 <RowCard key={v.id}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                     <div>
-                      <b>{v.plate}</b> · {v.model}<br />
+                      <button onClick={() => setModal({ type: "vehicleHistory", vehicleId: v.id })}
+                        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: LIGHTBLUE, fontWeight: 700, fontSize: 14, textAlign: "left" }}>
+                        {v.plate} · {v.model}
+                      </button><br />
                       <span style={{ fontSize: 12, color: TEXT_MUTED }}>
                         {v.assignedTo ? `Ανατεθειμένο σε: ${employeeName(v.assignedTo)}` : "Χωρίς ανάθεση"}
                       </span>
@@ -523,11 +623,38 @@ export default function LinetecApp() {
       {modal === "employee" && (
         <EmployeeModal onClose={() => setModal(null)}
           onSave={async (data) => {
-            const { data: row } = await supabase.from("employees").insert({ name: data.name, role: data.role }).select().single();
-            if (row) setEmployees(es => [...es, { id: row.id, name: row.name, role: row.role }]);
+            const { data: row } = await supabase.from("employees").insert({
+              name: data.name, role: data.role, phone: data.phone, email: data.email,
+              afm: data.afm, address: data.address, notes: data.notes, photo_url: data.photoUrl
+            }).select().single();
+            if (row) setEmployees(es => [...es, {
+              id: row.id, name: row.name, role: row.role, phone: row.phone || "", email: row.email || "",
+              afm: row.afm || "", address: row.address || "", notes: row.notes || "", photoUrl: row.photo_url || ""
+            }]);
             showToast(`Ο/Η ${data.name} προστέθηκε στο προσωπικό.`);
             setModal(null);
           }} />
+      )}
+      {modal && modal.type === "editEmployee" && (
+        <EmployeeModal
+          initial={modal.employee}
+          onClose={() => setModal(null)}
+          onSave={async (data) => {
+            await supabase.from("employees").update({
+              name: data.name, role: data.role, phone: data.phone, email: data.email,
+              afm: data.afm, address: data.address, notes: data.notes, photo_url: data.photoUrl
+            }).eq("id", modal.employee.id);
+            setEmployees(es => es.map(e => e.id === modal.employee.id ? { ...e, ...data } : e));
+            showToast(`Τα στοιχεία του ${data.name} ενημερώθηκαν.`);
+            setModal(null);
+          }} />
+      )}
+      {modal && modal.type === "employeeDetail" && (
+        <EmployeeDetailModal
+          employee={employees.find(e => e.id === modal.employeeId)}
+          onEdit={() => setModal({ type: "editEmployee", employee: employees.find(e => e.id === modal.employeeId) })}
+          onClose={() => setModal(null)}
+        />
       )}
       {modal === "vehicle" && (
         <VehicleModal employees={employees} onClose={() => setModal(null)}
@@ -546,6 +673,13 @@ export default function LinetecApp() {
             showToast("Το έξοδο καταχωρήθηκε.");
             setModal(null);
           }} />
+      )}
+      {modal && modal.type === "vehicleHistory" && (
+        <VehicleHistoryModal
+          vehicle={vehicles.find(v => v.id === modal.vehicleId)}
+          expenses={vehicleExpenses.filter(ve => ve.vehicleId === modal.vehicleId)}
+          onClose={() => setModal(null)}
+        />
       )}
       {modal === "customer" && (
         <CustomerModal onClose={() => setModal(null)}
@@ -566,6 +700,16 @@ export default function LinetecApp() {
             showToast(`Τα στοιχεία του ${data.name} ενημερώθηκαν.`);
             setModal(null);
           }} />
+      )}
+      {modal && modal.type === "customerHistory" && (
+        <CustomerHistoryModal
+          customer={customers.find(c => c.id === modal.customerId)}
+          invoices={invoices.filter(i => i.customerId === modal.customerId)}
+          payments={payments.filter(p => p.customerId === modal.customerId)}
+          initialTab={modal.tab}
+          branchName={branchName}
+          onClose={() => setModal(null)}
+        />
       )}
       {modal && modal.type === "branch" && (
         <BranchModal onClose={() => setModal(null)}
@@ -671,14 +815,30 @@ export default function LinetecApp() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
-function Card({ label, value, color }) {
+function Sparkline({ points, color }) {
+  if (!points || points.length < 2) return null;
+  const w = 100, h = 28, pad = 2;
+  const min = Math.min(...points), max = Math.max(...points);
+  const range = max - min || 1;
+  const step = (w - pad * 2) / (points.length - 1);
+  const coords = points.map((p, i) => `${pad + i * step},${h - pad - ((p - min) / range) * (h - pad * 2)}`).join(" ");
   return (
-    <div style={{ background: NAVY_2, borderRadius: 12, padding: 16, border: `1px solid ${CARD_BORDER}` }}>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", marginTop: 6 }}>
+      <polyline points={coords} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
+    </svg>
+  );
+}
+
+function Card({ label, value, color, trend }) {
+  return (
+    <div className="ltc-kpi" style={{ background: NAVY_2, borderRadius: 14, padding: 16, border: `1px solid ${CARD_BORDER}`, boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}>
       <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+      {trend && <Sparkline points={trend} color={color} />}
     </div>
   );
 }
@@ -686,18 +846,61 @@ function SectionTitle({ children, icon: Icon, color = DARK }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 15, color, margin: "18px 0 10px" }}>{Icon && <Icon size={16} />}{children}</div>;
 }
 function RowCard({ children, danger }) {
-  return <div style={{ background: NAVY_2, border: `1px solid ${danger ? "#7a2b2b" : CARD_BORDER}`, borderLeft: danger ? `4px solid ${DANGER}` : `1px solid ${CARD_BORDER}`, borderRadius: 10, padding: "10px 14px", marginBottom: 8, fontSize: 13.5 }}>{children}</div>;
+  return <div className="ltc-card" style={{
+      background: NAVY_2,
+      border: `1px solid ${danger ? "#7a2b2b" : CARD_BORDER}`,
+      borderLeft: `4px solid ${danger ? DANGER : TEAL}`,
+      borderRadius: 12, padding: "10px 14px", marginBottom: 8, fontSize: 13.5,
+      boxShadow: "0 3px 12px rgba(0,0,0,0.25)"
+    }}>{children}</div>;
 }
 function Empty({ text }) {
   return <div style={{ color: TEXT_MUTED, fontSize: 13, padding: "16px 0" }}>{text}</div>;
 }
 
-function EmployeeModal({ onClose, onSave }) {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("Τεχνικός");
+function EmployeeDetailModal({ employee, onEdit, onClose }) {
+  if (!employee) return null;
+  const Row = ({ label, value }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 14, color: DARK }}>{value || "—"}</div>
+    </div>
+  );
+  return (
+    <Modal title={employee.name} onClose={onClose}>
+      {employee.photoUrl && (
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <img src={employee.photoUrl} alt="" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: `1px solid ${CARD_BORDER}` }} />
+        </div>
+      )}
+      <Row label="Ρόλος" value={employee.role} />
+      <Row label="Κινητό τηλέφωνο" value={employee.phone} />
+      <Row label="Email" value={employee.email} />
+      <Row label="Α.Φ.Μ." value={employee.afm} />
+      <Row label="Διεύθυνση κατοικίας" value={employee.address} />
+      <Row label="Σημειώσεις" value={employee.notes} />
+      <button style={{ ...btnPrimary, width: "100%", marginTop: 8 }} onClick={onEdit}>Επεξεργασία στοιχείων</button>
+    </Modal>
+  );
+}
+
+function EmployeeModal({ onClose, onSave, initial }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [role, setRole] = useState(initial?.role || "Τεχνικός");
+  const [phone, setPhone] = useState(initial?.phone || "");
+  const [email, setEmail] = useState(initial?.email || "");
+  const [afm, setAfm] = useState(initial?.afm || "");
+  const [address, setAddress] = useState(initial?.address || "");
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const [photoUrl, setPhotoUrl] = useState(initial?.photoUrl || "");
   const [error, setError] = useState("");
   return (
-    <Modal title="Νέο μέλος προσωπικού" onClose={onClose}>
+    <Modal title={initial ? "Επεξεργασία μέλους προσωπικού" : "Νέο μέλος προσωπικού"} onClose={onClose}>
+      {photoUrl && (
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <img src={photoUrl} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: `1px solid ${CARD_BORDER}` }} />
+        </div>
+      )}
       <label style={labelStyle}>Ονοματεπώνυμο</label>
       <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="π.χ. Ελένη Καραγιάννη" />
       <label style={labelStyle}>Ρόλος</label>
@@ -705,11 +908,23 @@ function EmployeeModal({ onClose, onSave }) {
         <option>Τεχνικός</option>
         <option>Διαχειριστής</option>
       </select>
+      <label style={labelStyle}>Σύνδεσμος φωτογραφίας (URL)</label>
+      <input style={inputStyle} value={photoUrl} onChange={e => setPhotoUrl(e.target.value)} placeholder="π.χ. https://..." />
+      <label style={labelStyle}>Κινητό τηλέφωνο</label>
+      <input style={inputStyle} value={phone} onChange={e => setPhone(e.target.value)} placeholder="π.χ. 6971234567" />
+      <label style={labelStyle}>Email</label>
+      <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="π.χ. name@email.com" />
+      <label style={labelStyle}>Α.Φ.Μ.</label>
+      <input style={inputStyle} value={afm} onChange={e => setAfm(e.target.value)} placeholder="π.χ. 123456789" />
+      <label style={labelStyle}>Διεύθυνση κατοικίας</label>
+      <input style={inputStyle} value={address} onChange={e => setAddress(e.target.value)} placeholder="π.χ. Οδός, Αριθμός, Πόλη" />
+      <label style={labelStyle}>Σημειώσεις</label>
+      <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Προαιρετικές σημειώσεις" />
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!name) { setError("Συμπληρώστε όνομα."); return; }
-        onSave({ name, role });
-      }}>Προσθήκη</button>
+        onSave({ name, role, phone, email, afm, address, notes, photoUrl });
+      }}>{initial ? "Αποθήκευση αλλαγών" : "Προσθήκη"}</button>
     </Modal>
   );
 }
@@ -731,7 +946,7 @@ function VehicleModal({ employees, onClose, onSave }) {
         {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
       </select>
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!plate) { setError("Συμπληρώστε πινακίδα."); return; }
         onSave({ plate, model, assignedTo: assignedTo || null });
       }}>Προσθήκη οχήματος</button>
@@ -764,11 +979,74 @@ function VehicleExpenseModal({ vehicles, onClose, onSave }) {
       <label style={labelStyle}>Ημερομηνία</label>
       <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!vehicleId) { setError("Επιλέξτε όχημα."); return; }
         if (!amount || Number(amount) <= 0) { setError("Εισάγετε έγκυρο ποσό."); return; }
         onSave({ vehicleId, type, amount: Number(amount), date });
       }}>Καταχώρηση εξόδου</button>
+    </Modal>
+  );
+}
+
+function VehicleHistoryModal({ vehicle, expenses, onClose }) {
+  if (!vehicle) return null;
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
+  return (
+    <Modal title={`Ιστορικό εξόδων — ${vehicle.plate}`} onClose={onClose}>
+      <div style={{ fontSize: 13, color: TEXT_MUTED, marginBottom: 14 }}>
+        Σύνολο εξόδων: <b style={{ color: DARK }}>{fmtEUR(total)}</b>
+      </div>
+      {expenses.length === 0
+        ? <div style={{ fontSize: 13, color: TEXT_MUTED }}>Δεν υπάρχουν καταχωρημένα έξοδα.</div>
+        : expenses.slice().reverse().map(e => (
+            <div key={e.id} style={{ fontSize: 13, padding: "8px 0", borderBottom: `1px solid ${CARD_BORDER}` }}>
+              {e.type} · {fmtEUR(e.amount)} · {fmtDate(e.date)}
+            </div>
+          ))
+      }
+    </Modal>
+  );
+}
+
+function CustomerHistoryModal({ customer, invoices, payments, branchName, initialTab, onClose }) {
+  const [tab, setTab] = useState(initialTab || "invoices");
+  if (!customer) return null;
+  return (
+    <Modal title={`Ιστορικό — ${customer.name}`} onClose={onClose}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <button onClick={() => setTab("invoices")}
+          style={{ flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600,
+            border: `1px solid ${tab === "invoices" ? BLUE : CARD_BORDER}`,
+            background: tab === "invoices" ? BLUE : NAVY_3, color: tab === "invoices" ? "white" : DARK }}>
+          Ιστορικό χρεώσεων
+        </button>
+        <button onClick={() => setTab("payments")}
+          style={{ flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600,
+            border: `1px solid ${tab === "payments" ? BLUE : CARD_BORDER}`,
+            background: tab === "payments" ? BLUE : NAVY_3, color: tab === "payments" ? "white" : DARK }}>
+          Ιστορικό εισπράξεων
+        </button>
+      </div>
+      {tab === "invoices" && (
+        invoices.length === 0
+          ? <div style={{ fontSize: 13, color: TEXT_MUTED }}>Δεν υπάρχουν καταχωρημένες χρεώσεις.</div>
+          : invoices.slice().reverse().map(i => (
+              <div key={i.id} style={{ fontSize: 13, padding: "8px 0", borderBottom: `1px solid ${CARD_BORDER}` }}>
+                {i.type} · {fmtEUR(i.amount)} · {fmtDate(i.date)}
+                {branchName(i.customerId, i.branchId) && <span style={{ color: TEXT_MUTED }}> ({branchName(i.customerId, i.branchId)})</span>}
+              </div>
+            ))
+      )}
+      {tab === "payments" && (
+        payments.length === 0
+          ? <div style={{ fontSize: 13, color: TEXT_MUTED }}>Δεν υπάρχουν καταχωρημένες εισπράξεις.</div>
+          : payments.slice().reverse().map(p => (
+              <div key={p.id} style={{ fontSize: 13, padding: "8px 0", borderBottom: `1px solid ${CARD_BORDER}` }}>
+                {fmtEUR(p.amount)} · {p.full ? "Πλήρης εξόφληση" : "Μερική είσπραξη"} · {fmtDate(p.date)}
+                {branchName(p.customerId, p.branchId) && <span style={{ color: TEXT_MUTED }}> ({branchName(p.customerId, p.branchId)})</span>}
+              </div>
+            ))
+      )}
     </Modal>
   );
 }
@@ -787,7 +1065,7 @@ function CustomerModal({ onClose, onSave, initial }) {
       <label style={labelStyle}>Email</label>
       <input style={inputStyle} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="π.χ. name@email.com" />
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!name) { setError("Συμπληρώστε όνομα πελάτη."); return; }
         onSave({ name, phone, email });
       }}>{initial ? "Αποθήκευση αλλαγών" : "Προσθήκη πελάτη"}</button>
@@ -803,7 +1081,7 @@ function BranchModal({ onClose, onSave }) {
       <label style={labelStyle}>Όνομα παρακλαδιού</label>
       <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="π.χ. Υποκατάστημα - Πάτρα" />
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!name) { setError("Συμπληρώστε όνομα παρακλαδιού."); return; }
         onSave(name);
       }}>Προσθήκη</button>
@@ -846,7 +1124,7 @@ function InvoiceModal({ customers, onClose, onSave }) {
       <label style={labelStyle}>Ημερομηνία έκδοσης</label>
       <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!customerId || !amount || Number(amount) <= 0) { setError("Συμπληρώστε πελάτη και έγκυρο ποσό."); return; }
         onSave({ customerId, branchId: branchId || null, type, amount: Number(amount), date });
       }}>Καταχώρηση</button>
@@ -887,7 +1165,7 @@ function AppointmentModal({ customers, employees, appointments, onClose, onSave 
         </div>
       </div>
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!title) { setError("Συμπληρώστε τίτλο."); return; }
         if (end <= start) { setError("Η ώρα λήξης πρέπει να είναι μετά την έναρξη."); return; }
         const conflict = appointments.some(a => a.employeeId === employeeId && a.date === date && start < a.end && end > a.start);
@@ -950,7 +1228,7 @@ function PaymentModal({ customer, onClose, onSave }) {
         </>
       )}
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         const val = Number(amount);
         if (!val || val <= 0) { setError("Εισάγετε έγκυρο ποσό."); return; }
         if (val > maxAmount) { setError(branchId ? "Το ποσό δεν μπορεί να ξεπερνά το υπόλοιπο του παρακλαδιού." : "Το ποσό δεν μπορεί να ξεπερνά το υπόλοιπο."); return; }
@@ -981,10 +1259,11 @@ function TaskModal({ employees, onClose, onSave }) {
       <label style={labelStyle}>Προθεσμία</label>
       <input style={inputStyle} type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
       {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      <button style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
         if (!title) { setError("Συμπληρώστε τίτλο εργασίας."); return; }
         onSave({ title, assigneeId, priority, deadline });
       }}>Δημιουργία</button>
     </Modal>
   );
 }
+

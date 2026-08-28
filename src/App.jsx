@@ -191,6 +191,100 @@ export default function LinetecApp() {
     showToast(`Το όχημα ${vehicle.plate} αφαιρέθηκε.`);
   };
 
+  const adjustCustomerBranchBalance = async (customerId, branchId, delta) => {
+    const cust = customers.find(c => c.id === customerId);
+    if (!cust) return;
+    const newCustBalance = Math.round((cust.balance + delta) * 100) / 100;
+    await supabase.from("customers").update({ balance: newCustBalance }).eq("id", customerId);
+    let newBranches = cust.branches;
+    if (branchId) {
+      const br = (cust.branches || []).find(b => b.id === branchId);
+      const newBrBalance = Math.round(((br?.balance || 0) + delta) * 100) / 100;
+      await supabase.from("branches").update({ balance: newBrBalance }).eq("id", branchId);
+      newBranches = (cust.branches || []).map(b => b.id === branchId ? { ...b, balance: newBrBalance } : b);
+    }
+    setCustomers(cs => cs.map(c => c.id === customerId ? { ...c, balance: newCustBalance, branches: newBranches } : c));
+  };
+
+  const deleteInvoice = async (invoice) => {
+    if (!window.confirm("Διαγραφή αυτής της χρέωσης; Το ποσό θα αφαιρεθεί από το υπόλοιπο του πελάτη.")) return;
+    await adjustCustomerBranchBalance(invoice.customerId, invoice.branchId, -invoice.amount);
+    await supabase.from("invoices").delete().eq("id", invoice.id);
+    setInvoices(is => is.filter(i => i.id !== invoice.id));
+    showToast("Η χρέωση διαγράφηκε.");
+  };
+
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  const saveEditedInvoice = async (invoice, data) => {
+    const custId = invoice.customerId;
+    const cust = customers.find(c => c.id === custId);
+    const newAmount = Number(data.amount);
+    const newCustBalance = round2(cust.balance - invoice.amount + newAmount);
+    let branches = cust.branches || [];
+    if (invoice.branchId === data.branchId) {
+      if (data.branchId) branches = branches.map(b => b.id === data.branchId ? { ...b, balance: round2(b.balance - invoice.amount + newAmount) } : b);
+    } else {
+      branches = branches.map(b => {
+        if (b.id === invoice.branchId) return { ...b, balance: round2(b.balance - invoice.amount) };
+        if (b.id === data.branchId) return { ...b, balance: round2((b.balance || 0) + newAmount) };
+        return b;
+      });
+    }
+    await supabase.from("customers").update({ balance: newCustBalance }).eq("id", custId);
+    for (const b of branches) {
+      if (b.id === invoice.branchId || b.id === data.branchId) {
+        await supabase.from("branches").update({ balance: b.balance }).eq("id", b.id);
+      }
+    }
+    await supabase.from("invoices").update({
+      branch_id: data.branchId, type: data.type, amount: newAmount, date: data.date
+    }).eq("id", invoice.id);
+    setCustomers(cs => cs.map(c => c.id === custId ? { ...c, balance: newCustBalance, branches } : c));
+    setInvoices(is => is.map(i => i.id === invoice.id ? { ...i, branchId: data.branchId, type: data.type, amount: newAmount, date: data.date } : i));
+    showToast("Η χρέωση ενημερώθηκε.");
+  };
+
+  const deletePayment = async (payment) => {
+    if (!window.confirm("Διαγραφή αυτής της είσπραξης; Το ποσό θα προστεθεί ξανά στο υπόλοιπο του πελάτη.")) return;
+    await adjustCustomerBranchBalance(payment.customerId, payment.branchId, payment.amount);
+    await supabase.from("payments").delete().eq("id", payment.id);
+    setPayments(ps => ps.filter(p => p.id !== payment.id));
+    showToast("Η είσπραξη διαγράφηκε.");
+  };
+
+  const saveEditedPayment = async (payment, data) => {
+    const custId = payment.customerId;
+    const cust = customers.find(c => c.id === custId);
+    const newAmount = Number(data.amount);
+    // reverting a payment ADDS back its amount; applying a new payment SUBTRACTS its amount
+    const newCustBalance = round2(cust.balance + payment.amount - newAmount);
+    let branches = cust.branches || [];
+    if (payment.branchId === data.branchId) {
+      if (data.branchId) branches = branches.map(b => b.id === data.branchId ? { ...b, balance: round2(b.balance + payment.amount - newAmount) } : b);
+    } else {
+      branches = branches.map(b => {
+        if (b.id === payment.branchId) return { ...b, balance: round2((b.balance || 0) + payment.amount) };
+        if (b.id === data.branchId) return { ...b, balance: round2((b.balance || 0) - newAmount) };
+        return b;
+      });
+    }
+    await supabase.from("customers").update({ balance: newCustBalance }).eq("id", custId);
+    for (const b of branches) {
+      if (b.id === payment.branchId || b.id === data.branchId) {
+        await supabase.from("branches").update({ balance: b.balance }).eq("id", b.id);
+      }
+    }
+    await supabase.from("payments").update({
+      branch_id: data.branchId, amount: newAmount, date: data.date, is_full: newCustBalance === 0, remaining_after: newCustBalance
+    }).eq("id", payment.id);
+    setCustomers(cs => cs.map(c => c.id === custId ? { ...c, balance: newCustBalance, branches } : c));
+    setPayments(ps => ps.map(p => p.id === payment.id
+      ? { ...p, branchId: data.branchId, amount: newAmount, date: data.date, full: newCustBalance === 0, remainingAfter: newCustBalance }
+      : p));
+    showToast("Η είσπραξη ενημερώθηκε.");
+  };
+
   const isEmployeeView = role !== "admin";
   const myTasks = isEmployeeView ? tasks.filter(t => t.assigneeId === role) : tasks;
   const myAppts = isEmployeeView ? appointments.filter(a => a.employeeId === role) : appointments;
@@ -453,9 +547,23 @@ export default function LinetecApp() {
             {invoices.length === 0 && <Empty text="Δεν υπάρχουν καταχωρημένα παραστατικά." />}
             {invoices.slice().reverse().map(i => (
               <RowCard key={i.id}>
-                {i.type} · {customerName(i.customerId)}
-                {branchName(i.customerId, i.branchId) && <span style={{ color: TEXT_MUTED }}> ({branchName(i.customerId, i.branchId)})</span>}
-                {" "}· {fmtEUR(i.amount)} · {fmtDate(i.date)}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    {i.type} · {customerName(i.customerId)}
+                    {branchName(i.customerId, i.branchId) && <span style={{ color: TEXT_MUTED }}> ({branchName(i.customerId, i.branchId)})</span>}
+                    {" "}· {fmtEUR(i.amount)} · {fmtDate(i.date)}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button aria-label="Επεξεργασία χρέωσης" onClick={() => setModal({ type: "editInvoice", invoice: i })}
+                      style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: BLUE }}>
+                      <Pencil size={14} />
+                    </button>
+                    <button aria-label="Διαγραφή χρέωσης" onClick={() => deleteInvoice(i)}
+                      style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: DANGER }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
               </RowCard>
             ))}
 
@@ -469,9 +577,21 @@ export default function LinetecApp() {
                     {branchName(p.customerId, p.branchId) && <span style={{ color: TEXT_MUTED }}> ({branchName(p.customerId, p.branchId)})</span>}
                     <span style={{ fontSize: 12, color: TEXT_MUTED }}> · {p.full ? "Πλήρης εξόφληση" : "Μερική είσπραξη"} · {fmtDate(p.date)}</span>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, color: TEAL }}>{fmtEUR(p.amount)}</div>
-                    <div style={{ fontSize: 12, color: TEXT_MUTED }}>Υπόλοιπο μετά: {fmtEUR(p.remainingAfter)}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 700, color: TEAL }}>{fmtEUR(p.amount)}</div>
+                      <div style={{ fontSize: 12, color: TEXT_MUTED }}>Υπόλοιπο μετά: {fmtEUR(p.remainingAfter)}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button aria-label="Επεξεργασία είσπραξης" onClick={() => setModal({ type: "editPayment", payment: p })}
+                        style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: BLUE }}>
+                        <Pencil size={14} />
+                      </button>
+                      <button aria-label="Διαγραφή είσπραξης" onClick={() => deletePayment(p)}
+                        style={{ background: "transparent", border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: DANGER }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </RowCard>
@@ -808,6 +928,22 @@ export default function LinetecApp() {
             setModal(null);
           }} />
       )}
+      {modal && modal.type === "editInvoice" && (
+        <EditInvoiceModal
+          invoice={modal.invoice}
+          customer={customers.find(c => c.id === modal.invoice.customerId)}
+          onClose={() => setModal(null)}
+          onSave={async (data) => { await saveEditedInvoice(modal.invoice, data); setModal(null); }}
+        />
+      )}
+      {modal && modal.type === "editPayment" && (
+        <EditPaymentModal
+          payment={modal.payment}
+          customer={customers.find(c => c.id === modal.payment.customerId)}
+          onClose={() => setModal(null)}
+          onSave={async (data) => { await saveEditedPayment(modal.payment, data); setModal(null); }}
+        />
+      )}
 
       {toast && (
         <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: TEAL, color: DARK, padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 60 }}>
@@ -1089,6 +1225,75 @@ function BranchModal({ onClose, onSave }) {
   );
 }
 
+function EditInvoiceModal({ invoice, customer, onClose, onSave }) {
+  const [branchId, setBranchId] = useState(invoice.branchId || "");
+  const [type, setType] = useState(invoice.type);
+  const [amount, setAmount] = useState(String(invoice.amount));
+  const [date, setDate] = useState(invoice.date);
+  const [error, setError] = useState("");
+  const branches = customer?.branches || [];
+  return (
+    <Modal title="Επεξεργασία χρέωσης" onClose={onClose}>
+      <div style={{ fontSize: 13, color: TEXT_MUTED, marginBottom: 14 }}>Πελάτης: <b style={{ color: DARK }}>{customer?.name}</b></div>
+      {branches.length > 0 && (
+        <>
+          <label style={labelStyle}>Παρακλάδι</label>
+          <select style={inputStyle} value={branchId} onChange={e => setBranchId(e.target.value)}>
+            <option value="">Γενικά (χωρίς συγκεκριμένο παρακλάδι)</option>
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </>
+      )}
+      <label style={labelStyle}>Τύπος παραστατικού</label>
+      <select style={inputStyle} value={type} onChange={e => setType(e.target.value)}>
+        <option>Τιμολόγιο</option>
+        <option>Απόδειξη</option>
+        <option>Λιανική</option>
+      </select>
+      <label style={labelStyle}>Ποσό (€)</label>
+      <input style={inputStyle} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+      <label style={labelStyle}>Ημερομηνία</label>
+      <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
+      {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+        if (!amount || Number(amount) <= 0) { setError("Εισάγετε έγκυρο ποσό."); return; }
+        onSave({ branchId: branchId || null, type, amount: Number(amount), date });
+      }}>Αποθήκευση αλλαγών</button>
+    </Modal>
+  );
+}
+
+function EditPaymentModal({ payment, customer, onClose, onSave }) {
+  const [branchId, setBranchId] = useState(payment.branchId || "");
+  const [amount, setAmount] = useState(String(payment.amount));
+  const [date, setDate] = useState(payment.date);
+  const [error, setError] = useState("");
+  const branches = customer?.branches || [];
+  return (
+    <Modal title="Επεξεργασία είσπραξης" onClose={onClose}>
+      <div style={{ fontSize: 13, color: TEXT_MUTED, marginBottom: 14 }}>Πελάτης: <b style={{ color: DARK }}>{customer?.name}</b></div>
+      {branches.length > 0 && (
+        <>
+          <label style={labelStyle}>Παρακλάδι</label>
+          <select style={inputStyle} value={branchId} onChange={e => setBranchId(e.target.value)}>
+            <option value="">Γενικά (συνολικό υπόλοιπο πελάτη)</option>
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </>
+      )}
+      <label style={labelStyle}>Ποσό (€)</label>
+      <input style={inputStyle} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+      <label style={labelStyle}>Ημερομηνία</label>
+      <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
+      {error && <div style={{ color: DANGER, fontSize: 12, marginBottom: 10 }}>{error}</div>}
+      <button className="ltc-btn" style={{ ...btnPrimary, width: "100%" }} onClick={() => {
+        if (!amount || Number(amount) <= 0) { setError("Εισάγετε έγκυρο ποσό."); return; }
+        onSave({ branchId: branchId || null, amount: Number(amount), date });
+      }}>Αποθήκευση αλλαγών</button>
+    </Modal>
+  );
+}
+
 function InvoiceModal({ customers, onClose, onSave }) {
   const [customerId, setCustomerId] = useState(customers[0]?.id || "");
   const [branchId, setBranchId] = useState("");
@@ -1266,4 +1471,3 @@ function TaskModal({ employees, onClose, onSave }) {
     </Modal>
   );
 }
-

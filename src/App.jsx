@@ -481,7 +481,7 @@ export default function LinetecApp() {
             </button>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           <select value={role} onChange={(e) => { setRole(e.target.value); setView("dashboard"); }}
             style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${CARD_BORDER}`, background: NAVY_3, color: DARK, fontSize: 13 }}>
             <option value="admin">Προβολή: LINETEC</option>
@@ -1712,4 +1712,3 @@ function TaskModal({ employees, onClose, onSave, initial }) {
     </Modal>
   );
 }
-

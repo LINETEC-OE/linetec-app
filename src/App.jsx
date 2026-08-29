@@ -467,10 +467,10 @@ export default function LinetecApp() {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <LogoMark size={90} />
           {weatherNow && (
-            <div title={weatherLabel(weatherNow.code)} className="ltc-weather-badge" style={{
-                display: "flex", alignItems: "center", gap: 8,
+            <button onClick={() => setModal("weatherWeek")} title={weatherLabel(weatherNow.code)} className="ltc-weather-badge" style={{
+                display: "flex", alignItems: "center", gap: 8, cursor: "pointer", border: "none",
                 background: "linear-gradient(135deg, rgba(255,183,77,0.18), rgba(255,138,61,0.10))",
-                border: "1px solid rgba(255,183,77,0.35)", borderRadius: 999, padding: "6px 14px 6px 6px",
+                borderRadius: 999, padding: "6px 14px 6px 6px",
                 boxShadow: "0 4px 14px rgba(255,138,61,0.18)", backdropFilter: "blur(10px)"
               }}>
               <span style={{
@@ -478,7 +478,7 @@ export default function LinetecApp() {
                   borderRadius: "50%", background: "linear-gradient(135deg, #FFD180, #FF8A3D)", fontSize: 16
                 }}>{weatherIcon(weatherNow.code)}</span>
               <span style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{weatherNow.temp}°C</span>
-            </div>
+            </button>
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
@@ -952,6 +952,9 @@ export default function LinetecApp() {
           onClose={() => setModal(null)}
         />
       )}
+      {modal === "weatherWeek" && (
+        <WeatherWeekModal days={weatherDaily} onClose={() => setModal(null)} />
+      )}
       {modal === "customer" && (
         <CustomerModal onClose={() => setModal(null)}
           onSave={async (data) => {
@@ -1307,6 +1310,40 @@ function VehicleExpenseModal({ vehicles, onClose, onSave }) {
         if (!amount || Number(amount) <= 0) { setError("Εισάγετε έγκυρο ποσό."); return; }
         onSave({ vehicleId, type, amount: Number(amount), date });
       }}>Καταχώρηση εξόδου</button>
+    </Modal>
+  );
+}
+
+function WeatherWeekModal({ days, onClose }) {
+  const weekDays = (days || []).slice(0, 7);
+  const dayLabel = (dateStr) => new Date(dateStr).toLocaleDateString("el-GR", { weekday: "short", day: "numeric", month: "short" });
+  return (
+    <Modal title="Πρόγνωση εβδομάδας" onClose={onClose}>
+      {weekDays.length === 0 && <div style={{ fontSize: 13, color: TEXT_MUTED }}>Η πρόγνωση δεν είναι ακόμη διαθέσιμη.</div>}
+      {weekDays.map(d => {
+        const alert = d.precip >= 50 || d.tempMax >= 35;
+        return (
+          <div key={d.date} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              padding: "10px 12px", marginBottom: 8, borderRadius: 10,
+              background: alert ? "rgba(255,107,107,0.10)" : NAVY_3,
+              border: `1px solid ${alert ? DANGER : CARD_BORDER}`
+            }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 20 }}>{weatherIcon(d.code)}</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: DARK, textTransform: "capitalize" }}>{dayLabel(d.date)}</div>
+                <div style={{ fontSize: 12, color: TEXT_MUTED }}>{weatherLabel(d.code)}</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{d.tempMax}°C</div>
+              {d.precip >= 50 && <div style={{ fontSize: 11, color: DANGER, fontWeight: 600 }}>Βροχή {d.precip}%</div>}
+              {d.tempMax >= 35 && <div style={{ fontSize: 11, color: DANGER, fontWeight: 600 }}>Καύσωνας</div>}
+            </div>
+          </div>
+        );
+      })}
     </Modal>
   );
 }
@@ -1675,3 +1712,4 @@ function TaskModal({ employees, onClose, onSave, initial }) {
     </Modal>
   );
 }
+

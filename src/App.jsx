@@ -1,23 +1,57 @@
 import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard, Receipt, CalendarDays, ListChecks, Users,
-  Plus, Bell, X, Check, AlertTriangle, Trash2, Car, Pencil
+  Plus, Bell, X, Check, AlertTriangle, Trash2, Car, Pencil, Sun, Moon
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
-const TEAL = "#1BAE95";
-const BLUE = "#1E88C7";
-const DEEPBLUE = "#1565A8";
-const LIGHTBLUE = "#3FB6E8";
-const NAVY = "#0D0D0D";
-const NAVY_2 = "#1A1A1A";
-const NAVY_3 = "#242424";
-const CARD_BORDER = "#333333";
-const DARK = "#EDEDED";
-const DANGER = "#FF6B6B";
-const TEXT_MUTED = "#9A9A9A";
+const TEAL = "var(--teal)";
+const BLUE = "var(--blue)";
+const DEEPBLUE = "var(--deepblue)";
+const LIGHTBLUE = "var(--lightblue)";
+const NAVY = "var(--bg)";
+const NAVY_2 = "var(--card)";
+const CARD_GLASS = "var(--card-glass)";
+const NAVY_3 = "var(--input-bg)";
+const CARD_BORDER = "var(--border)";
+const DARK = "var(--text)";
+const DANGER = "var(--danger)";
+const TEXT_MUTED = "var(--muted)";
+
+const DARK_THEME = {
+  "--bg": "#0D0D0D", "--card": "#1A1A1A", "--card-glass": "rgba(26,26,26,0.62)", "--input-bg": "#242424", "--border": "#333333",
+  "--text": "#EDEDED", "--muted": "#9A9A9A", "--danger": "#FF6B6B",
+  "--teal": "#1BAE95", "--blue": "#1E88C7", "--deepblue": "#1565A8", "--lightblue": "#3FB6E8",
+};
+const LIGHT_THEME = {
+  "--bg": "#F5F6F8", "--card": "#FFFFFF", "--card-glass": "rgba(255,255,255,0.68)", "--input-bg": "#F0F1F3", "--border": "#DDE1E6",
+  "--text": "#181A1F", "--muted": "#6B7280", "--danger": "#D6453F",
+  "--teal": "#0E9C7C", "--blue": "#1876AC", "--deepblue": "#125A88", "--lightblue": "#1E93C4",
+};
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const WEATHER_ICONS = {
+  0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+  45: "🌫️", 48: "🌫️",
+  51: "🌦️", 53: "🌦️", 55: "🌦️",
+  61: "🌧️", 63: "🌧️", 65: "🌧️",
+  71: "❄️", 73: "❄️", 75: "❄️",
+  80: "🌦️", 81: "🌧️", 82: "🌧️",
+  95: "⛈️", 96: "⛈️", 99: "⛈️",
+};
+const weatherIcon = (code) => WEATHER_ICONS[code] || "🌡️";
+const weatherLabel = (code) => {
+  if (code === 0) return "Αίθριος";
+  if ([1, 2].includes(code)) return "Λίγα σύννεφα";
+  if (code === 3) return "Συννεφιά";
+  if ([45, 48].includes(code)) return "Ομίχλη";
+  if ([51, 53, 55, 80].includes(code)) return "Ψιλόβροχο";
+  if ([61, 63, 65, 81, 82].includes(code)) return "Βροχή";
+  if ([71, 73, 75].includes(code)) return "Χιόνι";
+  if ([95, 96, 99].includes(code)) return "Καταιγίδα";
+  return "—";
+};
 const initialsOf = (name) => (name || "").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 const AVATAR_COLORS = ["#1BAE95", "#1E88C7", "#3FB6E8", "#1565A8", "#2E7D6B", "#6C63FF"];
 const avatarColor = (name) => {
@@ -81,10 +115,10 @@ const initialVehicleExpenses = [
 
 function Modal({ title, onClose, children }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-      <div style={{ background: NAVY_2, border: `1px solid ${CARD_BORDER}`, borderRadius: 12, padding: 24, width: 380, maxWidth: "90vw", maxHeight: "85vh", overflowY: "auto" }}>
+    <div className="ltc-modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
+      <div className="ltc-modal-sheet" style={{ background: CARD_GLASS, border: `1px solid ${CARD_BORDER}`, borderRadius: 20, padding: 24, width: 380, maxWidth: "90vw", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 17, color: DARK }}>{title}</h3>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: DARK }}>{title}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: TEXT_MUTED }}><X size={20} /></button>
         </div>
         {children}
@@ -110,6 +144,10 @@ export default function LinetecApp() {
   const [vehicles, setVehicles] = useState(initialVehicles);
   const [vehicleExpenses, setVehicleExpenses] = useState(initialVehicleExpenses);
   const [toast, setToast] = useState(null);
+  const [darkMode, setDarkMode] = useState(true);
+  const [weatherNow, setWeatherNow] = useState(null);
+  const [weatherDaily, setWeatherDaily] = useState([]);
+  const theme = darkMode ? DARK_THEME : LIGHT_THEME;
   const [customerSearch, setCustomerSearch] = useState("");
   const [modal, setModal] = useState(null);
 
@@ -157,6 +195,36 @@ export default function LinetecApp() {
     }
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    async function loadWeather(lat, lon) {
+      try {
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,precipitation_probability_max,weather_code&timezone=auto&forecast_days=16`);
+        const data = await res.json();
+        if (data.current) setWeatherNow({ temp: Math.round(data.current.temperature_2m), code: data.current.weather_code });
+        if (data.daily) {
+          const days = data.daily.time.map((date, i) => ({
+            date,
+            tempMax: Math.round(data.daily.temperature_2m_max[i]),
+            precip: data.daily.precipitation_probability_max[i],
+            code: data.daily.weather_code[i],
+          }));
+          setWeatherDaily(days);
+        }
+      } catch (e) {
+        // silently ignore — weather is a nice-to-have, not critical
+      }
+    }
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => loadWeather(pos.coords.latitude, pos.coords.longitude),
+        () => loadWeather(37.9838, 23.7275), // fallback: Αθήνα
+        { timeout: 5000 }
+      );
+    } else {
+      loadWeather(37.9838, 23.7275);
+    }
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
@@ -339,7 +407,7 @@ export default function LinetecApp() {
 
   if (loading) {
     return (
-      <div style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif", background: NAVY, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: DARK }}>
+      <div style={{ ...(darkMode ? DARK_THEME : LIGHT_THEME), fontFamily: "-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', system-ui, sans-serif", background: NAVY, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: DARK }}>
         Φόρτωση δεδομένων...
       </div>
     );
@@ -358,18 +426,27 @@ export default function LinetecApp() {
   return (
     <>
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-      .ltc-card { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      .ltc-card { transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease, border-color 0.18s ease; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
       .ltc-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.35); border-color: ${LIGHTBLUE}; }
-      .ltc-kpi { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+      .ltc-kpi { transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
       .ltc-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.4); }
-      .ltc-btn { transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease; }
+      .ltc-btn { transition: transform 0.12s cubic-bezier(0.34,1.56,0.64,1), filter 0.12s ease, box-shadow 0.12s ease; }
       .ltc-btn:hover { filter: brightness(1.1); box-shadow: 0 4px 14px rgba(30,136,199,0.35); }
-      .ltc-btn:active { transform: scale(0.97); }
+      .ltc-btn:active { transform: scale(0.94); filter: brightness(0.92); }
       .ltc-avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+      .ltc-modal-backdrop { animation: ltcFadeIn 0.2s ease; }
+      .ltc-modal-sheet { animation: ltcSpringIn 0.32s cubic-bezier(0.34,1.56,0.64,1); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+      @keyframes ltcFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes ltcSpringIn { from { opacity: 0; transform: scale(0.9) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+      .ltc-seg-track { position: relative; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+      .ltc-seg-btn { position: relative; z-index: 1; transition: color 0.2s ease; }
+      .ltc-toggle { position: relative; width: 46px; height: 26px; border-radius: 999px; border: none; cursor: pointer; transition: background 0.25s ease; padding: 0; }
+      .ltc-toggle-knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.3); transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1); }
     `}</style>
     <div style={{
-        fontFamily: "'Inter', system-ui, -apple-system, sans-serif", maxWidth: 960, margin: "0 auto",
+        ...theme,
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', system-ui, sans-serif", maxWidth: 960, margin: "0 auto",
         minHeight: "100vh", color: DARK, position: "relative", isolation: "isolate",
         background: `
           radial-gradient(ellipse 900px 500px at 10% -5%, rgba(27,174,149,0.16), transparent 60%),
@@ -378,9 +455,6 @@ export default function LinetecApp() {
           ${NAVY}
         `
       }}>
-      <svg width="0" height="0" style={{ position: "absolute" }}>
-        <defs></defs>
-      </svg>
       <div style={{
           position: "fixed", inset: 0, zIndex: -1, opacity: 0.35, pointerEvents: "none",
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' viewBox='0 0 400 200'%3E%3Cpath d='M0 100 C 60 60, 100 140, 160 100 S 260 60, 320 100 S 400 140, 400 100' fill='none' stroke='%231BAE95' stroke-opacity='0.18' stroke-width='2'/%3E%3Cpath d='M0 140 C 60 100, 100 180, 160 140 S 260 100, 320 140 S 400 180, 400 140' fill='none' stroke='%233FB6E8' stroke-opacity='0.14' stroke-width='2'/%3E%3C/svg%3E")`,
@@ -391,31 +465,54 @@ export default function LinetecApp() {
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <LogoMark size={90} />
         </div>
-        <select value={role} onChange={(e) => { setRole(e.target.value); setView("dashboard"); }}
-          style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${CARD_BORDER}`, background: NAVY_3, color: DARK, fontSize: 13 }}>
-          <option value="admin">Προβολή: ΔΗΜΗΤΡΗΣ</option>
-          {employees.map(e => <option key={e.id} value={e.id}>Προβολή: {e.name}</option>)}
-        </select>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {weatherNow && (
+            <div title={weatherLabel(weatherNow.code)} style={{ display: "flex", alignItems: "center", gap: 4, background: NAVY_3, border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, color: DARK }}>
+              <span>{weatherIcon(weatherNow.code)}</span>
+              <span>{weatherNow.temp}°C</span>
+            </div>
+          )}
+          <select value={role} onChange={(e) => { setRole(e.target.value); setView("dashboard"); }}
+            style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${CARD_BORDER}`, background: NAVY_3, color: DARK, fontSize: 13 }}>
+            <option value="admin">Προβολή: LINETEC</option>
+            {employees.map(e => <option key={e.id} value={e.id}>Προβολή: {e.name}</option>)}
+          </select>
+          <button
+            aria-label={darkMode ? "Ενεργοποίηση φωτεινού θέματος" : "Ενεργοποίηση σκοτεινού θέματος"}
+            onClick={() => setDarkMode(d => !d)}
+            className="ltc-toggle"
+            style={{ background: darkMode ? BLUE : CARD_BORDER }}>
+            <span className="ltc-toggle-knob" style={{ transform: darkMode ? "translateX(20px)" : "translateX(0)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {darkMode ? <Moon size={12} color={BLUE} /> : <Sun size={12} color="#C9852E" />}
+            </span>
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 4, padding: "10px 20px", overflowX: "auto", background: "rgba(26,26,26,0.35)", backdropFilter: "blur(6px)", borderBottom: `1px solid ${CARD_BORDER}` }}>
+      <div className="ltc-seg-track" style={{ display: "flex", gap: 2, padding: 4, margin: "12px 20px", overflowX: "auto", background: NAVY_3, borderRadius: 14, border: `1px solid ${CARD_BORDER}` }}>
         {nav.filter(n => !n.adminOnly || !isEmployeeView).map(n => {
           const Icon = n.icon;
           const active = view === n.id;
           return (
-            <button key={n.id} onClick={() => setView(n.id)}
+            <button key={n.id} onClick={() => setView(n.id)} className="ltc-seg-btn"
               style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
+                display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 11,
                 border: "none", cursor: "pointer", whiteSpace: "nowrap", fontSize: 13, fontWeight: 600,
-                background: active ? BLUE : "transparent", color: active ? "white" : TEXT_MUTED
+                background: active ? NAVY_2 : "transparent", color: active ? DARK : TEXT_MUTED,
+                boxShadow: active ? "0 2px 8px rgba(0,0,0,0.2)" : "none",
+                transition: "background 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease, color 0.2s ease"
               }}>
               <Icon size={16} /> {n.label}
             </button>
+
           );
         })}
       </div>
 
-      <div style={{ padding: 20 }}>
+      <div style={{ padding: "0 20px 20px" }}>
+        <h1 style={{ fontSize: 30, fontWeight: 800, margin: "4px 0 18px", letterSpacing: "-0.02em", color: DARK }}>
+          {nav.find(n => n.id === view)?.label || ""}
+        </h1>
         {view === "dashboard" && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 20 }}>
@@ -915,7 +1012,7 @@ export default function LinetecApp() {
           }} />
       )}
       {modal === "appointment" && (
-        <AppointmentModal customers={sortedCustomers} employees={employees} appointments={appointments}
+        <AppointmentModal customers={sortedCustomers} employees={employees} appointments={appointments} weatherDaily={weatherDaily}
           onClose={() => setModal(null)}
           onSave={async (data, err) => {
             if (err) { showToast(err); return; }
@@ -1007,6 +1104,7 @@ export default function LinetecApp() {
         <AppointmentModal
           customers={sortedCustomers} employees={employees}
           appointments={appointments.filter(a => a.id !== modal.appointment.id)}
+          weatherDaily={weatherDaily}
           initial={modal.appointment}
           onClose={() => setModal(null)}
           onSave={async (data, err) => {
@@ -1025,7 +1123,7 @@ export default function LinetecApp() {
       )}
 
       {toast && (
-        <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: TEAL, color: DARK, padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 60 }}>
+        <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: TEAL, color: "white", padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 60 }}>
           <Check size={14} style={{ verticalAlign: -2, marginRight: 6 }} />{toast}
         </div>
       )}
@@ -1050,7 +1148,7 @@ function Sparkline({ points, color }) {
 
 function Card({ label, value, color, trend }) {
   return (
-    <div className="ltc-kpi" style={{ background: NAVY_2, borderRadius: 14, padding: 16, border: `1px solid ${CARD_BORDER}`, boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}>
+    <div className="ltc-kpi" style={{ background: CARD_GLASS, borderRadius: 14, padding: 16, border: `1px solid ${CARD_BORDER}`, boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}>
       <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
       {trend && <Sparkline points={trend} color={color} />}
@@ -1062,7 +1160,7 @@ function SectionTitle({ children, icon: Icon, color = DARK }) {
 }
 function RowCard({ children, danger }) {
   return <div className="ltc-card" style={{
-      background: NAVY_2,
+      background: CARD_GLASS,
       border: `1px solid ${danger ? "#7a2b2b" : CARD_BORDER}`,
       borderLeft: `4px solid ${danger ? DANGER : TEAL}`,
       borderRadius: 12, padding: "10px 14px", marginBottom: 8, fontSize: 13.5,
@@ -1416,7 +1514,7 @@ function InvoiceModal({ customers, onClose, onSave }) {
   );
 }
 
-function AppointmentModal({ customers, employees, appointments, onClose, onSave, initial }) {
+function AppointmentModal({ customers, employees, appointments, onClose, onSave, initial, weatherDaily }) {
   const [title, setTitle] = useState(initial?.title || "");
   const [customerId, setCustomerId] = useState(initial?.customerId || customers[0]?.id || "");
   const [employeeId, setEmployeeId] = useState(initial?.employeeId || employees[0]?.id || "");
@@ -1424,6 +1522,7 @@ function AppointmentModal({ customers, employees, appointments, onClose, onSave,
   const [start, setStart] = useState(initial?.start || "09:00");
   const [end, setEnd] = useState(initial?.end || "10:00");
   const [error, setError] = useState("");
+  const forecast = (weatherDaily || []).find(d => d.date === date);
   return (
     <Modal title={initial ? "Επεξεργασία ραντεβού" : "Νέο ραντεβού"} onClose={onClose}>
       <label style={labelStyle}>Τίτλος</label>
@@ -1438,6 +1537,22 @@ function AppointmentModal({ customers, employees, appointments, onClose, onSave,
       </select>
       <label style={labelStyle}>Ημερομηνία</label>
       <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
+      {forecast && (
+        <div style={{
+            display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "8px 12px",
+            borderRadius: 8, fontSize: 13,
+            background: (forecast.precip >= 50 || forecast.tempMax >= 35) ? "rgba(255,107,107,0.12)" : NAVY_3,
+            border: `1px solid ${(forecast.precip >= 50 || forecast.tempMax >= 35) ? DANGER : CARD_BORDER}`,
+            color: DARK
+          }}>
+          <span style={{ fontSize: 18 }}>{weatherIcon(forecast.code)}</span>
+          <span>
+            {weatherLabel(forecast.code)}, {forecast.tempMax}°C
+            {forecast.precip >= 50 && <b style={{ color: DANGER }}> · Πιθανότητα βροχής {forecast.precip}%</b>}
+            {forecast.tempMax >= 35 && <b style={{ color: DANGER }}> · Υπερβολική ζέστη</b>}
+          </span>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10 }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>Ώρα έναρξης</label>
@@ -1550,5 +1665,3 @@ function TaskModal({ employees, onClose, onSave, initial }) {
     </Modal>
   );
 }
-
-    

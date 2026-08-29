@@ -144,7 +144,7 @@ export default function LinetecApp() {
   const [vehicles, setVehicles] = useState(initialVehicles);
   const [vehicleExpenses, setVehicleExpenses] = useState(initialVehicleExpenses);
   const [toast, setToast] = useState(null);
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const [weatherNow, setWeatherNow] = useState(null);
   const [weatherDaily, setWeatherDaily] = useState([]);
   const theme = darkMode ? DARK_THEME : LIGHT_THEME;
@@ -443,6 +443,8 @@ export default function LinetecApp() {
       .ltc-seg-btn { position: relative; z-index: 1; transition: color 0.2s ease; }
       .ltc-toggle { position: relative; width: 46px; height: 26px; border-radius: 999px; border: none; cursor: pointer; transition: background 0.25s ease; padding: 0; }
       .ltc-toggle-knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.3); transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+      .ltc-weather-badge { transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+      .ltc-weather-badge:hover { transform: translateY(-2px); }
     `}</style>
     <div style={{
         ...theme,
@@ -461,17 +463,25 @@ export default function LinetecApp() {
           backgroundSize: "400px 200px", backgroundRepeat: "repeat"
         }} />
 
-      <div style={{ background: "rgba(26,26,26,0.35)", backdropFilter: "blur(6px)", borderBottom: `1px solid ${CARD_BORDER}`, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ background: "rgba(26,26,26,0.35)", backdropFilter: "blur(6px)", borderBottom: `1px solid ${CARD_BORDER}`, padding: "14px 20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <LogoMark size={90} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {weatherNow && (
-            <div title={weatherLabel(weatherNow.code)} style={{ display: "flex", alignItems: "center", gap: 4, background: NAVY_3, border: `1px solid ${CARD_BORDER}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, color: DARK }}>
-              <span>{weatherIcon(weatherNow.code)}</span>
-              <span>{weatherNow.temp}°C</span>
+            <div title={weatherLabel(weatherNow.code)} className="ltc-weather-badge" style={{
+                display: "flex", alignItems: "center", gap: 8,
+                background: "linear-gradient(135deg, rgba(255,183,77,0.18), rgba(255,138,61,0.10))",
+                border: "1px solid rgba(255,183,77,0.35)", borderRadius: 999, padding: "6px 14px 6px 6px",
+                boxShadow: "0 4px 14px rgba(255,138,61,0.18)", backdropFilter: "blur(10px)"
+              }}>
+              <span style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30,
+                  borderRadius: "50%", background: "linear-gradient(135deg, #FFD180, #FF8A3D)", fontSize: 16
+                }}>{weatherIcon(weatherNow.code)}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{weatherNow.temp}°C</span>
             </div>
           )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           <select value={role} onChange={(e) => { setRole(e.target.value); setView("dashboard"); }}
             style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${CARD_BORDER}`, background: NAVY_3, color: DARK, fontSize: 13 }}>
             <option value="admin">Προβολή: LINETEC</option>

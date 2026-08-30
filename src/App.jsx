@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard, Receipt, CalendarDays, ListChecks, Users,
   Plus, Bell, X, Check, AlertTriangle, Trash2, Car, Pencil, Sun, Moon
@@ -146,6 +146,8 @@ export default function LinetecApp() {
   const [toast, setToast] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [flipDeg, setFlipDeg] = useState(0);
+  const touchStart = useRef(null);
+  const navRef = useRef(null);
   const [weatherNow, setWeatherNow] = useState(null);
   const [weatherDaily, setWeatherDaily] = useState([]);
   const theme = darkMode ? DARK_THEME : LIGHT_THEME;
@@ -229,6 +231,13 @@ export default function LinetecApp() {
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  useEffect(() => {
+    const container = navRef.current;
+    if (!container) return;
+    const activeBtn = container.querySelector(`[data-tab="${view}"]`);
+    if (activeBtn) activeBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [view]);
 
   const deleteCustomer = async (customer) => {
     if (!window.confirm(`Διαγραφή του πελάτη "${customer.name}"; Θα αφαιρεθούν και τα σχετικά ραντεβού/παραστατικά.`)) return;
@@ -423,6 +432,23 @@ export default function LinetecApp() {
     { id: "staff", label: "Προσωπικό", icon: Users, adminOnly: true },
     { id: "vehicles", label: "Οχήματα", icon: Car, adminOnly: true },
   ];
+  const visibleNav = nav.filter(n => !n.adminOnly || !isEmployeeView);
+  const onSwipeStart = (e) => {
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+  const onSwipeEnd = (e) => {
+    if (!touchStart.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.current.x;
+    const dy = t.clientY - touchStart.current.y;
+    touchStart.current = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const idx = visibleNav.findIndex(n => n.id === view);
+    if (idx === -1) return;
+    if (dx < 0 && idx < visibleNav.length - 1) setView(visibleNav[idx + 1].id);
+    if (dx > 0 && idx > 0) setView(visibleNav[idx - 1].id);
+  };
 
   return (
     <>
@@ -506,12 +532,12 @@ export default function LinetecApp() {
         </div>
       </div>
 
-      <div className="ltc-seg-track" style={{ display: "flex", gap: 2, padding: 4, margin: "12px 20px", overflowX: "auto", background: NAVY_3, borderRadius: 14, border: `1px solid ${CARD_BORDER}` }}>
-        {nav.filter(n => !n.adminOnly || !isEmployeeView).map(n => {
+      <div className="ltc-seg-track" ref={navRef} style={{ display: "flex", gap: 2, padding: 4, margin: "12px 20px", overflowX: "auto", background: NAVY_3, borderRadius: 14, border: `1px solid ${CARD_BORDER}` }}>
+        {visibleNav.map(n => {
           const Icon = n.icon;
           const active = view === n.id;
           return (
-            <button key={n.id} onClick={() => setView(n.id)} className="ltc-seg-btn"
+            <button key={n.id} data-tab={n.id} onClick={() => setView(n.id)} className="ltc-seg-btn"
               style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 11,
                 border: "none", cursor: "pointer", whiteSpace: "nowrap", fontSize: 13, fontWeight: 600,
@@ -526,7 +552,7 @@ export default function LinetecApp() {
         })}
       </div>
 
-      <div style={{ padding: "0 20px 20px" }}>
+      <div style={{ padding: "0 20px 20px" }} onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd}>
         <h1 style={{ fontSize: 30, fontWeight: 800, margin: "4px 0 18px", letterSpacing: "-0.02em", color: DARK }}>
           {nav.find(n => n.id === view)?.label || ""}
         </h1>
@@ -1719,3 +1745,4 @@ function TaskModal({ employees, onClose, onSave, initial }) {
     </Modal>
   );
 }
+

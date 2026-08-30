@@ -145,6 +145,7 @@ export default function LinetecApp() {
   const [vehicleExpenses, setVehicleExpenses] = useState(initialVehicleExpenses);
   const [toast, setToast] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
+  const [flipDeg, setFlipDeg] = useState(0);
   const [weatherNow, setWeatherNow] = useState(null);
   const [weatherDaily, setWeatherDaily] = useState([]);
   const theme = darkMode ? DARK_THEME : LIGHT_THEME;
@@ -441,8 +442,8 @@ export default function LinetecApp() {
       @keyframes ltcSpringIn { from { opacity: 0; transform: scale(0.9) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
       .ltc-seg-track { position: relative; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
       .ltc-seg-btn { position: relative; z-index: 1; transition: color 0.2s ease; }
-      .ltc-toggle { position: relative; width: 46px; height: 26px; border-radius: 999px; border: none; cursor: pointer; transition: background 0.25s ease; padding: 0; }
-      .ltc-toggle-knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.3); transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+      .ltc-toggle { position: relative; width: 46px; height: 26px; border-radius: 999px; border: none; cursor: pointer; transition: background 0.4s ease; padding: 0; perspective: 300px; }
+      .ltc-toggle-knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.3); transition: transform 0.6s cubic-bezier(0.45,1.6,0.4,1); transform-style: preserve-3d; }
       .ltc-weather-badge { transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1); }
       .ltc-weather-badge:hover { transform: translateY(-2px); }
     `}</style>
@@ -489,10 +490,16 @@ export default function LinetecApp() {
           </select>
           <button
             aria-label={darkMode ? "Ενεργοποίηση φωτεινού θέματος" : "Ενεργοποίηση σκοτεινού θέματος"}
-            onClick={() => setDarkMode(d => !d)}
+            onClick={() => {
+              setDarkMode(d => {
+                const next = !d;
+                setFlipDeg(f => f + (next ? 180 : -180));
+                return next;
+              });
+            }}
             className="ltc-toggle"
             style={{ background: darkMode ? BLUE : CARD_BORDER }}>
-            <span className="ltc-toggle-knob" style={{ transform: darkMode ? "translateX(20px)" : "translateX(0)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span className="ltc-toggle-knob" style={{ transform: `translateX(${darkMode ? 20 : 0}px) rotateY(${flipDeg}deg)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {darkMode ? <Moon size={12} color={BLUE} /> : <Sun size={12} color="#C9852E" />}
             </span>
           </button>

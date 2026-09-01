@@ -927,11 +927,12 @@ export default function LinetecApp() {
       {modal === "employee" && (
         <EmployeeModal onClose={() => setModal(null)}
           onSave={async (data) => {
-            const { data: row } = await supabase.from("employees").insert({
+            const { data: row, error } = await supabase.from("employees").insert({
               name: data.name, role: data.role, phone: data.phone, email: data.email,
               afm: data.afm, address: data.address, notes: data.notes, photo_url: data.photoUrl
             }).select().single();
-            if (row) setEmployees(es => [...es, {
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
+            setEmployees(es => [...es, {
               id: row.id, name: row.name, role: row.role, phone: row.phone || "", email: row.email || "",
               afm: row.afm || "", address: row.address || "", notes: row.notes || "", photoUrl: row.photo_url || ""
             }]);
@@ -963,8 +964,9 @@ export default function LinetecApp() {
       {modal === "vehicle" && (
         <VehicleModal employees={employees} onClose={() => setModal(null)}
           onSave={async (data) => {
-            const { data: row } = await supabase.from("vehicles").insert({ plate: data.plate, model: data.model, assigned_to: data.assignedTo }).select().single();
-            if (row) setVehicles(vs => [...vs, { id: row.id, plate: row.plate, model: row.model, assignedTo: row.assigned_to }]);
+            const { data: row, error } = await supabase.from("vehicles").insert({ plate: data.plate, model: data.model, assigned_to: data.assignedTo }).select().single();
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
+            setVehicles(vs => [...vs, { id: row.id, plate: row.plate, model: row.model, assignedTo: row.assigned_to }]);
             showToast(`Το όχημα ${data.plate} προστέθηκε.`);
             setModal(null);
           }} />
@@ -972,8 +974,9 @@ export default function LinetecApp() {
       {modal && modal.type === "vehicleExpense" && (
         <VehicleExpenseModal vehicles={vehicles} onClose={() => setModal(null)}
           onSave={async (data) => {
-            const { data: row } = await supabase.from("vehicle_expenses").insert({ vehicle_id: data.vehicleId, type: data.type, amount: data.amount, date: data.date }).select().single();
-            if (row) setVehicleExpenses(ves => [...ves, { id: row.id, vehicleId: row.vehicle_id, type: row.type, amount: Number(row.amount), date: row.date }]);
+            const { data: row, error } = await supabase.from("vehicle_expenses").insert({ vehicle_id: data.vehicleId, type: data.type, amount: data.amount, date: data.date }).select().single();
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
+            setVehicleExpenses(ves => [...ves, { id: row.id, vehicleId: row.vehicle_id, type: row.type, amount: Number(row.amount), date: row.date }]);
             showToast("Το έξοδο καταχωρήθηκε.");
             setModal(null);
           }} />
@@ -991,8 +994,9 @@ export default function LinetecApp() {
       {modal === "customer" && (
         <CustomerModal onClose={() => setModal(null)}
           onSave={async (data) => {
-            const { data: row } = await supabase.from("customers").insert({ name: data.name, phone: data.phone, email: data.email, balance: 0 }).select().single();
-            if (row) setCustomers(cs => [...cs, { id: row.id, name: row.name, phone: row.phone, email: row.email, balance: 0, branches: [] }]);
+            const { data: row, error } = await supabase.from("customers").insert({ name: data.name, phone: data.phone, email: data.email, balance: 0 }).select().single();
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
+            setCustomers(cs => [...cs, { id: row.id, name: row.name, phone: row.phone, email: row.email, balance: 0, branches: [] }]);
             showToast(`Ο πελάτης ${data.name} προστέθηκε.`);
             setModal(null);
           }} />
@@ -1021,8 +1025,9 @@ export default function LinetecApp() {
       {modal && modal.type === "branch" && (
         <BranchModal onClose={() => setModal(null)}
           onSave={async (name) => {
-            const { data: row } = await supabase.from("branches").insert({ customer_id: modal.customerId, name, balance: 0 }).select().single();
-            if (row) setCustomers(cs => cs.map(c => c.id === modal.customerId
+            const { data: row, error } = await supabase.from("branches").insert({ customer_id: modal.customerId, name, balance: 0 }).select().single();
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
+            setCustomers(cs => cs.map(c => c.id === modal.customerId
               ? { ...c, branches: [...(c.branches || []), { id: row.id, name: row.name, balance: 0 }] }
               : c));
             showToast("Το παρακλάδι προστέθηκε.");
@@ -1033,10 +1038,10 @@ export default function LinetecApp() {
       {modal === "invoice" && (
         <InvoiceModal customers={sortedCustomers} onClose={() => setModal(null)}
           onSave={async (data) => {
-            const { data: row } = await supabase.from("invoices").insert({
+            const { data: row, error } = await supabase.from("invoices").insert({
               customer_id: data.customerId, branch_id: data.branchId, type: data.type, amount: data.amount, date: data.date
             }).select().single();
-            if (!row) return;
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
             setInvoices(is => [...is, { id: row.id, customerId: row.customer_id, branchId: row.branch_id, type: row.type, amount: Number(row.amount), date: row.date }]);
             const cust = customers.find(c => c.id === data.customerId);
             const newCustBalance = cust.balance + Number(data.amount);
@@ -1062,11 +1067,12 @@ export default function LinetecApp() {
           onClose={() => setModal(null)}
           onSave={async (data, err) => {
             if (err) { showToast(err); return; }
-            const { data: row } = await supabase.from("appointments").insert({
+            const { data: row, error } = await supabase.from("appointments").insert({
               title: data.title, customer_id: data.customerId, employee_id: data.employeeId,
               date: data.date, start_time: data.start, end_time: data.end
             }).select().single();
-            if (row) setAppointments(as => [...as, { id: row.id, title: row.title, customerId: row.customer_id, employeeId: row.employee_id, date: row.date, start: row.start_time?.slice(0,5), end: row.end_time?.slice(0,5) }]);
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
+            setAppointments(as => [...as, { id: row.id, title: row.title, customerId: row.customer_id, employeeId: row.employee_id, date: row.date, start: row.start_time?.slice(0,5), end: row.end_time?.slice(0,5) }]);
             showToast("Το ραντεβού καταχωρήθηκε.");
             setModal(null);
           }} />
@@ -1074,10 +1080,11 @@ export default function LinetecApp() {
       {modal === "task" && (
         <TaskModal employees={employees} onClose={() => setModal(null)}
           onSave={async (data) => {
-            const { data: row } = await supabase.from("tasks").insert({
+            const { data: row, error } = await supabase.from("tasks").insert({
               title: data.title, assignee_id: data.assigneeId, priority: data.priority, deadline: data.deadline, status: "Εκκρεμεί"
             }).select().single();
-            if (row) setTasks(ts => [...ts, { id: row.id, title: row.title, assigneeId: row.assignee_id, priority: row.priority, deadline: row.deadline, status: row.status }]);
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
+            setTasks(ts => [...ts, { id: row.id, title: row.title, assigneeId: row.assignee_id, priority: row.priority, deadline: row.deadline, status: row.status }]);
             showToast("Η εργασία δημιουργήθηκε.");
             setModal(null);
           }} />
@@ -1093,10 +1100,11 @@ export default function LinetecApp() {
               : null;
             await supabase.from("customers").update({ balance: newBalance }).eq("id", modal.customerId);
             if (branchId) await supabase.from("branches").update({ balance: newBranchBalance }).eq("id", branchId);
-            const { data: row } = await supabase.from("payments").insert({
+            const { data: row, error } = await supabase.from("payments").insert({
               customer_id: modal.customerId, branch_id: branchId || null, amount,
               date: todayISO(), is_full: newBalance === 0, remaining_after: newBalance
             }).select().single();
+            if (error || !row) { showToast(`Σφάλμα: δεν αποθηκεύτηκε (${error?.message || "άγνωστο σφάλμα"})`); return; }
             setCustomers(cs => cs.map(c => {
               if (c.id !== modal.customerId) return c;
               const branches = branchId
@@ -1745,4 +1753,3 @@ function TaskModal({ employees, onClose, onSave, initial }) {
     </Modal>
   );
 }
-
